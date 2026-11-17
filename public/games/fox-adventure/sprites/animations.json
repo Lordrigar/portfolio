@@ -1,0 +1,37 @@
+{
+  "idle": {
+    "frames": 4,
+    "frameWidth": 192,
+    "frameHeight": 176
+  },
+  "walk": {
+    "frames": 8,
+    "frameWidth": 192,
+    "frameHeight": 176
+  },
+  "run": {
+    "frames": 8,
+    "frameWidth": 192,
+    "frameHeight": 176
+  },
+  "jump": {
+    "frames": 4,
+    "frameWidth": 192,
+    "frameHeight": 176
+  },
+  "throw": {
+    "frames": 6,
+    "frameWidth": 192,
+    "frameHeight": 176
+  },
+  "projectile": {
+    "frames": 4,
+    "frameWidth": 192,
+    "frameHeight": 176
+  },
+  "hit": {
+    "frames": 3,
+    "frameWidth": 192,
+    "frameHeight": 176
+  }
+}

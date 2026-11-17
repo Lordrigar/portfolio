@@ -59,3 +59,69 @@ p {
 @media (max-width: 480px) {
   main { padding: 40px 26px; }
 }
+
+.button {
+  display: inline-block;
+  margin-top: 28px;
+  padding: 13px 22px;
+  border: 1px solid #79d7be;
+  border-radius: 8px;
+  color: #79d7be;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+a:focus-visible, button:focus-visible { outline: 3px solid #f6cf74; outline-offset: 5px; }
+a:hover { color: #fff2d0; }
+.games-page, .game-page { max-width: 1100px; text-align: left; }
+.back-link { display: inline-block; color: #a9bcbf; text-decoration: none; margin-bottom: 40px; }
+.games-page > p { margin-left: 0; }
+.game-card { display: grid; grid-template-columns: 220px 1fr; overflow: hidden; margin-top: 40px; border: 1px solid #42565b; border-radius: 12px; text-decoration: none; color: #f7fafc; background: #172830; }
+.fox-preview { display: grid; place-items: center; background: #243c3d; min-height: 230px; }
+.fox-preview img { width: 192px; image-rendering: pixelated; }
+.game-card-copy { padding: 32px; }
+.game-card-copy h2 { margin: 14px 0 0; font-size: 1.8rem; }
+.game-card-copy p { margin: 12px 0 22px; font-size: 1rem; }
+.play-label { color: #f6cf74; font-weight: 700; }
+.game-page { padding: 30px; }
+.game-page .back-link { margin-bottom: 24px; }
+.game-page header { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.game-page h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); }
+.key-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+  margin: 24px 0 0;
+  padding: 16px 18px;
+  list-style: none;
+  border: 1px solid #34464d;
+  border-radius: 8px;
+  background: #142229;
+}
+.key-map li { display: flex; align-items: center; gap: 9px; color: #b9c9cd; font-size: .85rem; }
+.key-map li > span { display: flex; gap: 5px; }
+.key-map kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #53666b;
+  border-bottom-width: 3px;
+  border-radius: 5px;
+  background: #26383e;
+  color: #fff2d0;
+  font: 600 .8rem ui-monospace, monospace;
+}
+p.cursor-hint { max-width: none; margin: 12px 0 18px; color: #8fa5ab; font-size: .8rem; }
+.game-canvas { width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #121c30; border: 1px solid #42565b; border-radius: 6px; }
+.game-canvas canvas { display: block; image-rendering: pixelated; }
+@media (max-width: 650px) {
+  .games-page, .game-page { padding: 24px 18px; }
+  .game-card { grid-template-columns: 1fr; }
+  .fox-preview { min-height: 180px; }
+  .game-card-copy { padding: 24px; }
+  .game-page header { display: block; }
+  #root:has(.game-page) { padding: 8px; }
+}
