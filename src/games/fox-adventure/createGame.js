@@ -60,6 +60,7 @@ export function createGame(parent) {
         context.putImageData(pixels, 0, 0);
         texture.refresh();
       }
+      this.collectedBottles = 0;
       this.wasJump = false;
       this.throwUntil = 0;
       this.nextThrow = 0;
@@ -90,6 +91,15 @@ export function createGame(parent) {
       const pavement = this.add.rectangle(this.levelWidth / 2, pavementY + 40, this.levelWidth, 80).setVisible(false);
       this.physics.add.existing(pavement, true);
       platforms.add(pavement);
+      // Keep the painted ledge, with a dark backing and bright rim that clearly
+      // distinguish playable platforms from the scenery.
+      if (!street.has('platform')) street.add('platform', 0, 475, 274, 220, 24);
+      for (const [x, y] of [[540, 385], [730, 310], [1040, 385], [1230, 310], [1625, 370]]) {
+        this.add.rectangle(x, y + 3, 170, 26, 0x10121c, 0.95);
+        platforms.create(x, y, 'street', 'platform').setDisplaySize(160, 18).refreshBody();
+        this.add.rectangle(x, y, 164, 20).setStrokeStyle(2, 0xf4bd65);
+        this.add.rectangle(x, y - 8, 160, 3, 0xffe1a3);
+      }
       for (const [key, end, rate] of [['idle',3,4], ['walk',7,9], ['run',7,14]]) {
         if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end }), frameRate: rate, repeat: -1 });
       }
@@ -109,7 +119,35 @@ export function createGame(parent) {
       };
       this.events.on('postupdate', syncArtwork);
       this.events.once('shutdown', () => this.events.off('postupdate', syncArtwork));
-      this.physics.add.collider(this.fox, platforms);
+      this.physics.add.collider(this.fox, platforms, undefined, (fox, platform) => {
+        if (platform === pavement) return true;
+        // Only land from above; walking underneath or jumping through a ledge
+        // must never collide with its sides or underside.
+        return fox.body.velocity.y >= 0 &&
+          fox.body.prev.y + fox.body.height <= platform.body.top + 4;
+      });
+
+      // Tight texture bounds give pickups a visible, predictable overlap area.
+      const projectile = this.textures.get('projectile');
+      if (!projectile.has('pickup')) projectile.add('pickup', 0, 64, 116, 63, 52);
+      this.pickups = this.physics.add.group({ allowGravity: false, immovable: true });
+      for (const [x, y] of [[730, 260], [1230, 260], [1625, 320]]) {
+        const pickup = this.pickups.create(x, y, 'projectile', 'pickup').setScale(0.7);
+        this.tweens.add({ targets: pickup, y: y - 8, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+      }
+      this.add.rectangle(24, 22, 166, 48, 0x10121c, 0.9).setOrigin(0).setStrokeStyle(1, 0x766c70).setScrollFactor(0).setDepth(10);
+      this.add.image(49, 46, 'projectile', 'pickup').setScale(0.45).setScrollFactor(0).setDepth(11);
+      this.bottleCounter = this.add.text(72, 46, '0 / 3', {
+        fontFamily: 'monospace', fontSize: '22px', fontStyle: 'bold', color: '#f3e9d3',
+      }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(11);
+      this.physics.add.overlap(this.fox, this.pickups, (_fox, pickup) => {
+        if (!pickup.active) return;
+        this.tweens.killTweensOf(pickup);
+        pickup.disableBody(true, true);
+        this.collectedBottles += 1;
+        this.bottleCounter.setText(`${this.collectedBottles} / 3`);
+        if (this.collectedBottles === 3) this.bottleCounter.setColor('#79d7be');
+      });
       this.keys=this.input.keyboard.addKeys('W,A,S,D,SPACE,SHIFT,R');
       // Register after Phaser's listener: preventing default earlier would make
       // Phaser discard Space before the throw action can receive it.
