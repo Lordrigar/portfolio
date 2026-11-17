@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 
 export function createGame(parent) {
-  class Forest extends Phaser.Scene {
+  class Street extends Phaser.Scene {
     preload() {
+      this.load.image('street', '/games/fox-adventure/maps/street.png');
       this.load.image('crouch-source', '/games/fox-adventure/sprites/crouch-source.png');
       for (const [name, frames] of [['idle', 4], ['walk', 8], ['run', 8], ['jump', 4], ['throw', 6], ['projectile', 4], ['hit', 3]]) {
         this.load.spritesheet(name, `/games/fox-adventure/sprites/${name}.png`, { frameWidth: 192, frameHeight: 176, endFrame: frames - 1 });
@@ -12,7 +13,7 @@ export function createGame(parent) {
     create() {
       if (!this.textures.exists('crouch')) {
         // Fit the generated pose to the existing frame and remove faint alpha
-        // outside its outline so it stays crisp against the forest backdrop.
+        // outside its outline so it stays crisp against the street backdrop.
         const texture = this.textures.createCanvas('crouch', 192, 176);
         const context = texture.context;
         context.imageSmoothingEnabled = false;
@@ -24,36 +25,36 @@ export function createGame(parent) {
         context.putImageData(pixels, 0, 0);
         texture.refresh();
       }
-      this.collected = 0;
-      this.won = false;
       this.wasJump = false;
       this.throwUntil = 0;
       this.nextThrow = 0;
       this.crouching = false;
-      this.physics.world.setBounds(0, 0, 2400, 540);
-      this.cameras.main.setBounds(0, 0, 2400, 540);
-      const sky = this.add.graphics();
-      sky.fillStyle(0x121c30).fillRect(0, 0, 2400, 540);
-      sky.fillStyle(0xf4dfa4).fillCircle(700, 85, 32);
-      const random = new Phaser.Math.RandomDataGenerator(['fox-forest']);
-      for (let i = 0; i < 110; i++) {
-        sky.fillStyle(0xb7c8ce, random.frac()).fillRect(random.between(0, 2400), random.between(10, 280), 2, 2);
+      const viewHeight = 540;
+      const source = this.textures.get('street').getSourceImage();
+      const mapScale = viewHeight / source.height;
+      const openingWidth = Math.round(source.width * mapScale);
+      const extensionWidth = 360;
+      this.levelWidth = openingWidth + extensionWidth;
+      const pavementY = 461;
+      const spawnX = Math.round(openingWidth * 0.185);
+      this.physics.world.setBounds(20, 0, this.levelWidth - 40, viewHeight);
+      this.cameras.main.setBounds(0, 0, this.levelWidth, viewHeight);
+      this.add.image(0, 0, 'street').setOrigin(0).setDisplaySize(openingWidth, viewHeight);
+      // Only the opening contains the neon shop. The short continuation uses
+      // a crop well to its right, without tiling the shop into the street.
+      const street = this.textures.get('street');
+      if (!street.has('continuation')) {
+        street.add('continuation', 0, Math.round(source.width * 0.375), 0,
+          Math.round(extensionWidth / mapScale), source.height);
       }
-      for (let x = 0; x < 2400; x += 70) {
-        sky.fillStyle(0x1c3542).fillTriangle(x-50, 470, x+35, random.between(160, 300), x+100, 470);
-        sky.fillStyle(0x294644).fillTriangle(x-20, 490, x+35, random.between(300, 370), x+100, 490);
-      }
-      const tile = this.add.graphics();
-      tile.fillStyle(0x354539).fillRect(0, 0, 64, 32);
-      tile.fillStyle(0x91aa71).fillRect(0, 0, 64, 6);
-      tile.fillStyle(0x222f30).fillRect(8, 17, 14, 5).fillRect(40, 24, 18, 4);
-      if (!this.textures.exists('ground')) tile.generateTexture('ground', 64, 32);
-      tile.destroy();
+      this.add.image(openingWidth, 0, 'street', 'continuation').setOrigin(0)
+        .setDisplaySize(extensionWidth, viewHeight);
+
+      // One continuous invisible walking surface across the opening and extension.
       const platforms = this.physics.add.staticGroup();
-      for (let x = 32; x < 2400; x += 64) platforms.create(x, 516, 'ground');
-      for (const [x, y, width] of [[390, 405, 3], [700, 325, 3], [1030, 405, 3], [1350, 330, 3], [1670, 395, 3], [1980, 325, 3]]) {
-        for (let i = 0; i < width; i++) platforms.create(x + i * 64, y, 'ground');
-      }
+      const pavement = this.add.rectangle(this.levelWidth / 2, pavementY + 40, this.levelWidth, 80).setVisible(false);
+      this.physics.add.existing(pavement, true);
+      platforms.add(pavement);
       for (const [key, end, rate] of [['idle',3,4], ['walk',7,9], ['run',7,14]]) {
         if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end }), frameRate: rate, repeat: -1 });
       }
@@ -62,10 +63,10 @@ export function createGame(parent) {
       }
       this.bottles = this.physics.add.group();
       this.physics.add.collider(this.bottles, platforms, (bottle) => this.breakBottle(bottle));
-      this.fox = this.physics.add.sprite(100, 400, 'idle').setOrigin(0.5, 165 / 176).setScale(0.55).setCollideWorldBounds(true);
+      this.fox = this.physics.add.sprite(spawnX, pavementY, 'idle').setOrigin(0.5, 165 / 176).setScale(0.55).setCollideWorldBounds(true);
       this.fox.setVisible(false);
       this.fox.body.setSize(78, 130).setOffset(57, 35);
-      this.foxArt = this.add.sprite(100, 400, 'idle').setOrigin(0.5, 165 / 176).setScale(0.55);
+      this.foxArt = this.add.sprite(spawnX, pavementY, 'idle').setOrigin(0.5, 165 / 176).setScale(0.55);
       // Render one visible character after physics has finished positioning it.
       const syncArtwork = () => {
         this.foxArt.setPosition(this.fox.x, this.fox.y).setFlipX(this.fox.flipX);
@@ -74,22 +75,6 @@ export function createGame(parent) {
       this.events.on('postupdate', syncArtwork);
       this.events.once('shutdown', () => this.events.off('postupdate', syncArtwork));
       this.physics.add.collider(this.fox, platforms);
-      const stars = this.physics.add.staticGroup();
-      for (const [x,y] of [[450,350], [765,270], [1100,350], [1420,275], [2040,270]]) {
-        const star = this.add.star(x,y,5,7,15,0xf6cf74).setStrokeStyle(2,0xffe6ab);
-        this.physics.add.existing(star,true);
-        stars.add(star);
-        this.tweens.add({ targets:star, angle:12, duration:1100, yoyo:true, repeat:-1 });
-      }
-      this.physics.add.overlap(this.fox,stars,(_fox,star)=>{star.destroy();this.collected++;this.hud.setText(`STARS ${this.collected}/5`);});
-      const cabin = this.add.graphics();
-      cabin.fillStyle(0x805d47).fillRect(2250,410,100,90);
-      cabin.fillStyle(0xc99162).fillTriangle(2235,410,2300,355,2365,410);
-      cabin.fillStyle(0xf9ce7b).fillRect(2264,433,22,22);
-      cabin.fillStyle(0x352d30).fillRect(2302,448,28,52);
-      this.add.text(2230,330,'HOME', {fontFamily:'monospace',fontSize:'16px',color:'#f6cf74'});
-      this.hud=this.add.text(24,22,'STARS 0/5',{fontFamily:'monospace',fontSize:'20px',color:'#f6cf74',backgroundColor:'#121c30',padding:{x:10,y:8}}).setScrollFactor(0).setDepth(10);
-      this.message=this.add.text(480,150,'',{fontFamily:'monospace',fontSize:'23px',align:'center',color:'#fff2d0',backgroundColor:'#121c30',padding:{x:20,y:16}}).setOrigin(0.5).setScrollFactor(0).setDepth(11).setVisible(false);
       this.keys=this.input.keyboard.addKeys('W,A,S,D,SPACE,SHIFT,R');
       // Register after Phaser's listener: preventing default earlier would make
       // Phaser discard Space before the throw action can receive it.
@@ -101,7 +86,9 @@ export function createGame(parent) {
       };
       window.addEventListener('keydown', preventScroll, { passive: false });
       this.events.once('shutdown', () => window.removeEventListener('keydown', preventScroll));
-      this.cameras.main.startFollow(this.fox,true,0.08,0.08);
+      this.cameras.main.startFollow(this.fox, true, 0.1, 1);
+      this.cameras.main.setDeadzone(300, 540);
+      this.cameras.main.setScroll(0, 0);
     }
 
 
@@ -128,7 +115,6 @@ export function createGame(parent) {
 
     update(time) {
       if (Phaser.Input.Keyboard.JustDown(this.keys.R)) { this.scene.restart(); return; }
-      if (this.won) { this.fox.setVelocityX(0); this.foxArt.play('idle', true); return; }
       const grounded = this.fox.body.blocked.down;
       const crouching = this.keys.S.isDown && grounded;
       if (crouching !== this.crouching) {
@@ -162,11 +148,8 @@ export function createGame(parent) {
       } else {
         this.foxArt.play(crouching ? 'idle' : direction ? (run ? 'run' : 'walk') : 'idle', true);
       }
-      if(this.fox.x>2230) {
-        this.message.setVisible(true).setText(this.collected===5?'HOME AT LAST!\nAll stars collected. Press R to replay.':'A few stars are still out there.');
-        if(this.collected===5) this.won=true;
-      } else this.message.setVisible(false);
+
     }
   }
-  return new Phaser.Game({type:Phaser.AUTO,parent,width:960,height:540,pixelArt:true,backgroundColor:'#121c30',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{gravity:{y:1100}}},scene:Forest});
+  return new Phaser.Game({type:Phaser.AUTO,parent,width:960,height:540,pixelArt:true,backgroundColor:'#121c30',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{gravity:{y:1100}}},scene:Street});
 }

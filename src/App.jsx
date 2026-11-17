@@ -25,9 +25,6 @@ function Home() {
 function Games() {
   return <main className="games-page">
     <Link className="back-link" to="/">← Portfolio</Link>
-    <p className="eyebrow">The playground</p>
-    <h1>Small worlds.<br />Big adventures.</h1>
-    <p>A growing collection of browser games. Pick one and jump in.</p>
     <Link className="game-card" to="/games/fox-adventure/">
       <div className="fox-preview"><img src="/games/fox-adventure/sprites/idle-00.png" alt="Sleepy pixel fox wearing a yellow hat" /></div>
       <div className="game-card-copy">
