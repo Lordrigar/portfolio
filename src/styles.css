@@ -115,7 +115,7 @@ a:hover { color: #fff2d0; }
   font: 600 .8rem ui-monospace, monospace;
 }
 p.cursor-hint { max-width: none; margin: 12px 0 18px; color: #8fa5ab; font-size: .8rem; }
-.game-canvas { width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #121c30; border: 1px solid #42565b; border-radius: 6px; }
+.game-canvas { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #000; border: 1px solid #42565b; border-radius: 6px; }
 .game-canvas canvas { display: block; image-rendering: pixelated; }
 @media (max-width: 650px) {
   .games-page, .game-page { padding: 24px 18px; }
@@ -125,3 +125,19 @@ p.cursor-hint { max-width: none; margin: 12px 0 18px; color: #8fa5ab; font-size:
   .game-page header { display: block; }
   #root:has(.game-page) { padding: 8px; }
 }
+
+.start-adventure {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 16px 26px;
+  border: 2px solid #f3e9d3;
+  border-radius: 0;
+  background: #000;
+  color: #f3e9d3;
+  font: 700 clamp(.85rem, 2vw, 1.1rem) ui-monospace, monospace;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.start-adventure:hover { background: #f3e9d3; color: #000; }

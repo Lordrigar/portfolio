@@ -4,9 +4,11 @@ import { Link } from 'react-router-dom';
 export default function FoxAdventure() {
   const container = useRef(null);
   const [error, setError] = useState('');
+  const [started, setStarted] = useState(false);
   const [cursorHint, setCursorHint] = useState('Click the game to capture the cursor. Esc releases it.');
 
   useEffect(() => {
+    if (!started) return;
     const host = container.current;
     let game;
     let cancelled = false;
@@ -20,9 +22,10 @@ export default function FoxAdventure() {
       }
       game?.destroy(true);
     };
-  }, []);
+  }, [started]);
 
   async function captureCursor(event) {
+    if (!started) return;
     const canvas = event.currentTarget.querySelector('canvas');
     if (!canvas || document.pointerLockElement === canvas) return;
     if (!canvas.requestPointerLock) {
@@ -49,6 +52,8 @@ export default function FoxAdventure() {
       <li><kbd>R</kbd> Restart</li>
     </ul>
     <p className="cursor-hint">{cursorHint}</p>
-    {error ? <p role="alert">{error}</p> : <div className="game-canvas" ref={container} onClick={captureCursor} aria-label="Fox's Adventure platform game" />}
+    {error ? <p role="alert">{error}</p> : <div className="game-canvas" ref={container} onClick={captureCursor} aria-label="Fox's Adventure platform game">
+      {!started && <button className="start-adventure" onClick={() => setStarted(true)}>Start Adventure</button>}
+    </div>}
   </main>;
 }

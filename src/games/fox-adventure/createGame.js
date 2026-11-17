@@ -1,7 +1,42 @@
 import Phaser from 'phaser';
 
 export function createGame(parent) {
+  class Intro extends Phaser.Scene {
+    constructor() { super('Intro'); }
+
+    create() {
+      this.cameras.main.setBackgroundColor('#000000');
+      // A small bitmap alphabet keeps the title pixel-sharp without web fonts.
+      const glyphs = {
+        P: ['11110','10001','10001','11110','10000','10000','10000'],
+        o: ['00000','00000','01110','10001','10001','10001','01110'],
+        w: ['00000','00000','10001','10001','10101','10101','01010'],
+        i: ['00100','00000','01100','00100','00100','00100','01110'],
+        ś: ['00010','00100','01111','10000','01110','00001','11110'],
+        l: ['01100','00100','00100','00100','00100','00100','01110'],
+        e: ['00000','00000','01110','10001','11111','10000','01111'],
+        '2': ['01110','10001','00001','00010','00100','01000','11111'],
+        '0': ['01110','10001','10011','10101','11001','10001','01110'],
+        '6': ['00110','01000','10000','11110','10001','10001','01110'],
+      };
+      const label = 'Powiśle 2026';
+      const pixel = 4;
+      const title = this.add.graphics({ x: (960 - (label.length * 6 - 1) * pixel) / 2, y: 256 });
+      title.fillStyle(0xf3e9d3);
+      [...label].forEach((letter, index) => {
+        glyphs[letter]?.forEach((row, y) => {
+          [...row].forEach((bit, x) => {
+            if (bit === '1') title.fillRect((index * 6 + x) * pixel, y * pixel, pixel, pixel);
+          });
+        });
+      });
+      title.setAlpha(0);
+      this.tweens.add({ targets: title, alpha: 1, duration: 800, hold: 700, yoyo: true,
+        onComplete: () => this.scene.start('Street') });
+    }
+  }
   class Street extends Phaser.Scene {
+    constructor() { super('Street'); }
     preload() {
       this.load.image('street', '/games/fox-adventure/maps/street.png');
       this.load.image('crouch-source', '/games/fox-adventure/sprites/crouch-source.png');
@@ -89,6 +124,7 @@ export function createGame(parent) {
       this.cameras.main.startFollow(this.fox, true, 0.1, 1);
       this.cameras.main.setDeadzone(300, 540);
       this.cameras.main.setScroll(0, 0);
+      this.cameras.main.fadeIn(650, 0, 0, 0);
     }
 
 
@@ -151,5 +187,5 @@ export function createGame(parent) {
 
     }
   }
-  return new Phaser.Game({type:Phaser.AUTO,parent,width:960,height:540,pixelArt:true,backgroundColor:'#121c30',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{gravity:{y:1100}}},scene:Street});
+  return new Phaser.Game({type:Phaser.AUTO,parent,width:960,height:540,pixelArt:true,backgroundColor:'#000000',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{gravity:{y:1100}}},scene:[Intro, Street]});
 }
