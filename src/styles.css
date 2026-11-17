@@ -127,6 +127,7 @@ p.cursor-hint { max-width: none; margin: 12px 0 18px; color: #8fa5ab; font-size:
 }
 
 .start-adventure {
+  z-index: 2;
   position: absolute;
   top: 50%;
   left: 50%;

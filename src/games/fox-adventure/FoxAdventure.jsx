@@ -5,6 +5,8 @@ export default function FoxAdventure() {
   const container = useRef(null);
   const [error, setError] = useState('');
   const [started, setStarted] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const [run, setRun] = useState(0);
   const [cursorHint, setCursorHint] = useState('Click the game to capture the cursor. Esc releases it.');
 
   useEffect(() => {
@@ -13,7 +15,13 @@ export default function FoxAdventure() {
     let game;
     let cancelled = false;
     import('./createGame.js').then(({ createGame }) => {
-      if (!cancelled) game = createGame(host);
+      if (!cancelled) game = createGame(host, {
+        onComplete: () => {
+          if (cancelled) return;
+          if (document.pointerLockElement && host?.contains(document.pointerLockElement)) document.exitPointerLock();
+          setFinished(true);
+        },
+      });
     }).catch(() => setError('The game could not load. Please refresh and try again.'));
     return () => {
       cancelled = true;
@@ -22,10 +30,10 @@ export default function FoxAdventure() {
       }
       game?.destroy(true);
     };
-  }, [started]);
+  }, [started, run]);
 
   async function captureCursor(event) {
-    if (!started) return;
+    if (!started || finished) return;
     const canvas = event.currentTarget.querySelector('canvas');
     if (!canvas || document.pointerLockElement === canvas) return;
     if (!canvas.requestPointerLock) {
@@ -54,6 +62,11 @@ export default function FoxAdventure() {
     <p className="cursor-hint">{cursorHint}</p>
     {error ? <p role="alert">{error}</p> : <div className="game-canvas" ref={container} onClick={captureCursor} aria-label="Fox's Adventure platform game">
       {!started && <button className="start-adventure" onClick={() => setStarted(true)}>Start Adventure</button>}
+      {finished && <button className="start-adventure" onClick={(event) => {
+        event.stopPropagation();
+        setFinished(false);
+        setRun(value => value + 1);
+      }}>Restart Adventure</button>}
     </div>}
   </main>;
 }

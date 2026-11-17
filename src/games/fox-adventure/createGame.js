@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-export function createGame(parent) {
+export function createGame(parent, { onComplete } = {}) {
   class Intro extends Phaser.Scene {
     constructor() { super('Intro'); }
 
@@ -38,6 +38,8 @@ export function createGame(parent) {
   class Street extends Phaser.Scene {
     constructor() { super('Street'); }
     preload() {
+      this.load.spritesheet('bell-idle', '/games/fox-adventure/sprites/bell/idle.png', { frameWidth: 320, frameHeight: 288 });
+      this.load.spritesheet('bell-attack', '/games/fox-adventure/sprites/bell/attack.png', { frameWidth: 320, frameHeight: 288 });
       this.load.image('street', '/games/fox-adventure/maps/street.png');
       this.load.image('crouch-source', '/games/fox-adventure/sprites/crouch-source.png');
       for (const [name, frames] of [['idle', 4], ['walk', 8], ['run', 8], ['jump', 4], ['throw', 6], ['projectile', 4], ['hit', 3]]) {
@@ -60,6 +62,7 @@ export function createGame(parent) {
         context.putImageData(pixels, 0, 0);
         texture.refresh();
       }
+      this.ending = false;
       this.collectedBottles = 0;
       this.wasJump = false;
       this.throwUntil = 0;
@@ -106,8 +109,18 @@ export function createGame(parent) {
       for (const [key, end, rate, repeat] of [['throw', 5, 14, 0], ['projectile', 3, 12, -1], ['hit', 2, 16, 0]]) {
         if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end }), frameRate: rate, repeat });
       }
+      for (const [key, end, repeat] of [['bell-idle', 5, -1], ['bell-attack', 7, 0]]) {
+        if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end }), frameRate: key === 'bell-idle' ? 6 : 12, repeat });
+      }
+      this.bell = this.add.sprite(this.levelWidth - 125, pavementY - 25, 'bell-idle')
+        .setOrigin(0.5, 0.85).setScale(0.4).setDepth(3).play('bell-idle');
+      this.bellHover = this.tweens.add({ targets: this.bell, y: this.bell.y - 6, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
       this.bottles = this.physics.add.group();
-      this.physics.add.collider(this.bottles, platforms, (bottle) => this.breakBottle(bottle));
+      this.physics.add.collider(this.bottles, platforms, (bottle) => this.breakBottle(bottle), (bottle, platform) => {
+        if (platform === pavement) return true;
+        return bottle.body.velocity.y >= 0 &&
+          bottle.body.prev.y + bottle.body.height <= platform.body.top + 4;
+      });
       this.fox = this.physics.add.sprite(spawnX, pavementY, 'idle').setOrigin(0.5, 165 / 176).setScale(0.55).setCollideWorldBounds(true);
       this.fox.setVisible(false);
       this.fox.body.setSize(78, 130).setOffset(57, 35);
@@ -166,6 +179,43 @@ export function createGame(parent) {
     }
 
 
+    finishAdventure() {
+      if (this.ending) return;
+      this.ending = true;
+      this.fox.setVelocity(0, 0).setFlipX(false);
+      this.foxArt.setAngle(0).play('idle', true);
+      this.bottles.clear(true, true);
+      this.bellHover.stop();
+      this.bell.play('bell-attack');
+      this.time.delayedCall(350, () => {
+        // Time the recoil to the broom's downward swing.
+        this.fox.setVelocityX(-65);
+        this.foxArt.setTint(0xffb7a5);
+        this.tweens.add({ targets: this.foxArt, angle: -14, duration: 100, yoyo: true });
+        this.cameras.main.shake(140, 0.002);
+        this.time.delayedCall(180, () => {
+          this.fox.setVelocityX(0);
+          this.foxArt.clearTint();
+        });
+      });
+      this.bell.once('animationcomplete', () => this.bell.play('bell-idle'));
+      this.time.delayedCall(650, () => {
+        const x = this.bell.x - 205;
+        const y = this.bell.y - 155;
+        const bubble = this.add.graphics().setDepth(20);
+        bubble.fillStyle(0xfff2d6).fillRoundedRect(x, y, 264, 60, 8);
+        bubble.lineStyle(3, 0x352830).strokeRoundedRect(x, y, 264, 60, 8);
+        bubble.fillStyle(0xfff2d6).fillTriangle(this.bell.x - 12, y + 57, this.bell.x + 6, y + 57, this.bell.x, y + 76);
+        this.add.text(x + 14, y + 12, 'Finally, you are home!', {
+          fontFamily: 'monospace', fontSize: '18px', color: '#352830', wordWrap: { width: 240 },
+        }).setDepth(21);
+        this.time.delayedCall(2600, () => {
+          this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => onComplete?.());
+          this.cameras.main.fadeOut(2200, 0, 0, 0);
+        });
+      });
+    }
+
     breakBottle(bottle) {
       if (!bottle.active) return;
       const splash = this.add.sprite(bottle.x, bottle.y, 'hit').setOrigin(0.5, 0.75).setScale(0.55);
@@ -188,6 +238,11 @@ export function createGame(parent) {
     }
 
     update(time) {
+      if (this.ending) return;
+      if (this.fox.body.blocked.down && this.fox.x >= this.bell.x - 65) {
+        this.finishAdventure();
+        return;
+      }
       if (Phaser.Input.Keyboard.JustDown(this.keys.R)) { this.scene.restart(); return; }
       const grounded = this.fox.body.blocked.down;
       const crouching = this.keys.S.isDown && grounded;
