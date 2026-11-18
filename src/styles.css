@@ -142,3 +142,18 @@ p.cursor-hint { max-width: none; margin: 12px 0 18px; color: #8fa5ab; font-size:
   cursor: pointer;
 }
 .start-adventure:hover { background: #f3e9d3; color: #000; }
+
+.defeat-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 24px;
+  background: #000;
+}
+.defeat-title { display: block; width: min(340px, 85%); color: #f3e9d3; overflow: visible; }
+.defeat-screen .start-adventure { position: static; transform: none; }

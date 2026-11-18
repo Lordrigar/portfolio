@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import PixelText from './PixelText.jsx';
 
 export default function FoxAdventure() {
   const container = useRef(null);
@@ -63,11 +64,13 @@ export default function FoxAdventure() {
     <p className="cursor-hint">{cursorHint}</p>
     {error ? <p role="alert">{error}</p> : <div className="game-canvas" ref={container} onClick={captureCursor} aria-label="Fox's Adventure platform game">
       {!started && <button className="start-adventure" onClick={() => setStarted(true)}>Start Adventure</button>}
-      {finished && <button className="start-adventure" onClick={(event) => {
+      {finished && <div className="defeat-screen">
+        <PixelText text="Co za przegryw" />
+        <button className="start-adventure" onClick={(event) => {
         event.stopPropagation();
         setFinished(false);
         setRun(value => value + 1);
-      }}>Restart Adventure</button>}
+      }}>Restart Adventure</button></div>}
     </div>}
   </main>;
 }

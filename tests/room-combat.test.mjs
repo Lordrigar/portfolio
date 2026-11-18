@@ -7,7 +7,7 @@ import { PUNCH_DAMAGE } from '../src/games/fox-adventure/combat.mjs';
 import { PowerupState, POWER_DURATION } from '../src/games/fox-adventure/powerup.mjs';
 
 function roomWithCollisions() {
-  const Phaser = { Scene: class {}, Game: class { constructor(config) { Object.assign(this, config); } }, AUTO: 0,
+  const Phaser = { Math: { Clamp: (value, min, max) => Math.max(min, Math.min(max, value)) }, Scene: class {}, Game: class { constructor(config) { Object.assign(this, config); } }, AUTO: 0,
     Scale: { FIT: 0, CENTER_BOTH: 0 } };
   const context = vm.createContext({ Phaser, PowerupState, POWER_DURATION, ...combat });
   const source = fs.readFileSync(new URL('../src/games/fox-adventure/createGame.js', import.meta.url), 'utf8')
@@ -18,7 +18,7 @@ function roomWithCollisions() {
   const chain = new Proxy({}, { get: (_target, property) => property === 'then' ? undefined : () => chain });
   const overlaps = [], colliders = [], handlers = new Map();
   room.fox = { body: {} }; room.bottles = {}; room.roomFloor = {};
-  room.add = { zone: () => ({ body: {} }), container: () => chain, graphics: () => chain, text: () => chain };
+  room.add = { zone: () => ({ body: { updateFromGameObject() {} }, setPosition() { return this; } }), container: () => chain, graphics: () => chain, text: () => chain };
   room.physics = { add: {
     existing: () => {}, group: () => ({ clear() {} }),
     collider: (...args) => colliders.push(args), overlap: (...args) => { overlaps.push(args); return { destroy() {} }; },
@@ -90,4 +90,30 @@ test('Solo death disables his collider and plays death only once', () => {
   assert.equal(room.soloBody.body.enable, false);
   assert.equal(deaths, 1);
   assert.equal(cleared, 1);
+});
+
+
+test('Solo heavy punch applies one heart once at impact, and can be interrupted', () => {
+  for (const interrupt of [false, true]) {
+    const { room } = roomWithCollisions();
+    const callbacks = [];
+    let damage = 0;
+    room.time.delayedCall = (_delay, callback) => callbacks.push(callback);
+    room.takeDamage = amount => { damage += amount; };
+    room.fox.x = 140;
+    Object.assign(room.fox.body, { x: 119, y: 389, width: 43, height: 71 });
+    room.solo = {
+      x: 220, y: 460, anims: { isPlaying: true, stop() {} },
+      setFlipX() { return this; }, setTexture() { return this; }, setTint() { return this; },
+      clearTint() { return this; }, play() { return this; },
+    };
+    room.updateSolo(0, 16);
+    assert.equal(callbacks.length, 0);
+    room.updateSolo(650, 16);
+    room.updateSolo(651, 16);
+    assert.equal(callbacks.length, 1);
+    if (interrupt) room.soloAI.stun(700);
+    callbacks[0]();
+    assert.equal(damage, interrupt ? 0 : 1);
+  }
 });

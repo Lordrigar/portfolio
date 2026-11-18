@@ -34,3 +34,45 @@ test('moving after an attack dodges the original aim rather than retargeting', (
   assert.equal(arrival, 300);
   assert.notEqual(arrival, target.x);
 });
+
+test('Solo chases, commits his punch direction during charge, and has a recovery gap', async () => {
+  const { SoloBrain, SOLO_CHARGE_MS, SOLO_RECOVERY_MS } = await import('../src/games/fox-adventure/combat.mjs');
+  const brain = new SoloBrain();
+  assert.equal(brain.step(0, 765, 140).velocity, -110);
+  const charge = brain.step(1000, 220, 140);
+  assert.equal(charge.phase, 'charge');
+  assert.equal(charge.velocity, 0);
+  assert.equal(brain.step(1000 + SOLO_CHARGE_MS - 1, 220, 500).direction, -1);
+  const hit = brain.step(1000 + SOLO_CHARGE_MS, 220, 500);
+  assert.equal(hit.strike, true);
+  assert.equal(hit.direction, -1);
+  assert.equal(brain.step(1001 + SOLO_CHARGE_MS, 220, 500).strike, false);
+  assert.equal(brain.step(1000 + SOLO_CHARGE_MS + SOLO_RECOVERY_MS - 1, 220, 500).velocity, 0);
+  assert.equal(brain.step(1000 + SOLO_CHARGE_MS + SOLO_RECOVERY_MS, 220, 500).velocity, 110);
+});
+
+test('running away, jumping, ducking, or getting behind Solo avoids his fixed punch area', async () => {
+  const { soloPunchBounds, rectanglesOverlap } = await import('../src/games/fox-adventure/combat.mjs');
+  const swing = soloPunchBounds(220, 460, -1);
+  assert.equal(rectanglesOverlap(swing, { x: 119, y: 389, width: 43, height: 71 }), true);
+  for (const body of [
+    { x: 30, y: 389, width: 43, height: 71 },
+    { x: 119, y: 280, width: 43, height: 71 },
+    { x: 119, y: 416, width: 43, height: 44 },
+    { x: 240, y: 389, width: 43, height: 71 },
+  ]) assert.equal(rectanglesOverlap(swing, body), false);
+});
+
+test('stunning or defeating Solo cancels a charged attack', async () => {
+  const { SoloBrain } = await import('../src/games/fox-adventure/combat.mjs');
+  const brain = new SoloBrain();
+  brain.step(0, 220, 140);
+  const strike = brain.step(650, 220, 140);
+  assert.equal(brain.currentAttack(strike.attackId), true);
+  brain.stun(700);
+  assert.equal(brain.currentAttack(strike.attackId), false);
+  assert.equal(brain.step(800, 220, 500).velocity, 0);
+  brain.defeat();
+  assert.equal(brain.step(5000, 220, 500).phase, 'dead');
+  assert.equal(brain.step(5000, 220, 500).velocity, 0);
+});
