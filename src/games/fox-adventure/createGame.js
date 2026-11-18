@@ -37,7 +37,8 @@ export function createGame(parent, { onComplete } = {}) {
     }
   }
   class Street extends Phaser.Scene {
-    constructor() { super('Street'); }
+    constructor(key = 'Street') { super(key); }
+    init(data = {}) { this.initialData = data; }
     preload() {
       this.load.spritesheet('drink', '/games/fox-adventure/sprites/powerup/drink.png', { frameWidth: 320, frameHeight: 320 });
       for (const name of ['idle', 'walk', 'run', 'jump', 'crouch', 'punch']) {
@@ -71,9 +72,9 @@ export function createGame(parent, { onComplete } = {}) {
       this.ending = false;
       this.dying = false;
       this.fading = false;
-      this.collectedBottles = 0;
-      this.health = 3;
-      this.power = new PowerupState();
+      this.collectedBottles = this.initialData?.bottles ?? 0;
+      this.health = this.initialData?.health ?? 3;
+      this.power = this.initialData?.power ?? new PowerupState();
       this.nextPunch = 0;
       this.wasGrounded = true;
       this.jumpStartUntil = 0;
@@ -84,41 +85,7 @@ export function createGame(parent, { onComplete } = {}) {
       this.throwUntil = 0;
       this.nextThrow = 0;
       this.crouching = false;
-      const viewHeight = 540;
-      const source = this.textures.get('street').getSourceImage();
-      const mapScale = viewHeight / source.height;
-      const openingWidth = Math.round(source.width * mapScale);
-      const extensionWidth = 360;
-      this.levelWidth = openingWidth + extensionWidth;
-      const pavementY = 461;
-      const spawnX = Math.round(openingWidth * 0.185);
-      this.physics.world.setBounds(20, 0, this.levelWidth - 40, viewHeight);
-      this.cameras.main.setBounds(0, 0, this.levelWidth, viewHeight);
-      this.add.image(0, 0, 'street').setOrigin(0).setDisplaySize(openingWidth, viewHeight);
-      // Only the opening contains the neon shop. The short continuation uses
-      // a crop well to its right, without tiling the shop into the street.
-      const street = this.textures.get('street');
-      if (!street.has('continuation')) {
-        street.add('continuation', 0, Math.round(source.width * 0.375), 0,
-          Math.round(extensionWidth / mapScale), source.height);
-      }
-      this.add.image(openingWidth, 0, 'street', 'continuation').setOrigin(0)
-        .setDisplaySize(extensionWidth, viewHeight);
-
-      // One continuous invisible walking surface across the opening and extension.
-      const platforms = this.physics.add.staticGroup();
-      const pavement = this.add.rectangle(this.levelWidth / 2, pavementY + 40, this.levelWidth, 80).setVisible(false);
-      this.physics.add.existing(pavement, true);
-      platforms.add(pavement);
-      // Keep the painted ledge, with a dark backing and bright rim that clearly
-      // distinguish playable platforms from the scenery.
-      if (!street.has('platform')) street.add('platform', 0, 475, 274, 220, 24);
-      for (const [x, y] of [[540, 385], [730, 310], [1040, 385], [1230, 310], [1625, 370]]) {
-        this.add.rectangle(x, y + 3, 170, 26, 0x10121c, 0.95);
-        platforms.create(x, y, 'street', 'platform').setDisplaySize(160, 18).refreshBody();
-        this.add.rectangle(x, y, 164, 20).setStrokeStyle(2, 0xf4bd65);
-        this.add.rectangle(x, y - 8, 160, 3, 0xffe1a3);
-      }
+      const { pavement, platforms, pavementY, spawnX } = this.createLevel();
       for (const [key, end, rate] of [['idle',3,4], ['walk',7,9], ['run',7,14]]) {
         if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end }), frameRate: rate, repeat: -1 });
       }
@@ -171,7 +138,7 @@ export function createGame(parent, { onComplete } = {}) {
       const projectile = this.textures.get('projectile');
       if (!projectile.has('pickup')) projectile.add('pickup', 0, 64, 116, 63, 52);
       this.pickups = this.physics.add.group({ allowGravity: false, immovable: true });
-      for (const [x, y] of [[730, 260], [1230, 260], [1625, 320]]) {
+      for (const [x, y] of this.pickupLocations()) {
         const pickup = this.pickups.create(x, y, 'projectile', 'pickup').setScale(0.7);
         this.tweens.add({ targets: pickup, y: y - 8, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
       }
@@ -182,6 +149,7 @@ export function createGame(parent, { onComplete } = {}) {
       }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(11);
       this.add.rectangle(770, 78, 166, 44, 0x10121c, 0.9).setOrigin(0).setStrokeStyle(1, 0x766c70).setScrollFactor(0).setDepth(10);
       this.hearts = this.add.graphics().setScrollFactor(0).setDepth(11);
+      this.updateBottleCounter();
       this.drawHearts();
       this.add.rectangle(626, 22, 134, 48, 0x10121c, 0.9).setOrigin(0).setStrokeStyle(1, 0x766c70).setScrollFactor(0).setDepth(10);
       const powerIcon = this.add.graphics().setScrollFactor(0).setDepth(11);
@@ -217,6 +185,47 @@ export function createGame(parent, { onComplete } = {}) {
       this.cameras.main.fadeIn(650, 0, 0, 0);
     }
 
+
+    createLevel() {
+      const viewHeight = 540;
+      const source = this.textures.get('street').getSourceImage();
+      const mapScale = viewHeight / source.height;
+      const openingWidth = Math.round(source.width * mapScale);
+      const extensionWidth = 360;
+      this.levelWidth = openingWidth + extensionWidth;
+      const pavementY = 461;
+      const spawnX = Math.round(openingWidth * 0.185);
+      this.physics.world.setBounds(20, 0, this.levelWidth - 40, viewHeight);
+      this.cameras.main.setBounds(0, 0, this.levelWidth, viewHeight);
+      this.add.image(0, 0, 'street').setOrigin(0).setDisplaySize(openingWidth, viewHeight);
+      // Only the opening contains the neon shop. The short continuation uses
+      // a crop well to its right, without tiling the shop into the street.
+      const street = this.textures.get('street');
+      if (!street.has('continuation')) {
+        street.add('continuation', 0, Math.round(source.width * 0.375), 0,
+          Math.round(extensionWidth / mapScale), source.height);
+      }
+      this.add.image(openingWidth, 0, 'street', 'continuation').setOrigin(0)
+        .setDisplaySize(extensionWidth, viewHeight);
+
+      // One continuous invisible walking surface across the opening and extension.
+      const platforms = this.physics.add.staticGroup();
+      const pavement = this.add.rectangle(this.levelWidth / 2, pavementY + 40, this.levelWidth, 80).setVisible(false);
+      this.physics.add.existing(pavement, true);
+      platforms.add(pavement);
+      // Keep the painted ledge, with a dark backing and bright rim that clearly
+      // distinguish playable platforms from the scenery.
+      if (!street.has('platform')) street.add('platform', 0, 475, 274, 220, 24);
+      for (const [x, y] of [[540, 385], [730, 310], [1040, 385], [1230, 310], [1625, 370]]) {
+        this.add.rectangle(x, y + 3, 170, 26, 0x10121c, 0.95);
+        platforms.create(x, y, 'street', 'platform').setDisplaySize(160, 18).refreshBody();
+        this.add.rectangle(x, y, 164, 20).setStrokeStyle(2, 0xf4bd65);
+        this.add.rectangle(x, y - 8, 160, 3, 0xffe1a3);
+      }
+      return { pavement, platforms, pavementY, spawnX };
+    }
+
+    pickupLocations() { return [[730, 260], [1230, 260], [1625, 320]]; }
 
     drawHearts() {
       const pixels = ['0110110', '1111111', '1111111', '0111110', '0011100', '0001000'];
@@ -407,8 +416,7 @@ export function createGame(parent, { onComplete } = {}) {
       this.bellHover.stop();
       this.bell.play('bell-attack');
       this.time.delayedCall(350, () => {
-        // Time the recoil and lost heart to the broom's downward swing.
-        this.takeDamage();
+        // A story beat only: recoil without removing normal or bonus hearts.
         if (this.dying) return;
         this.fox.setVelocityX(-65);
         this.foxArt.setTint(0xffb7a5);
@@ -430,9 +438,13 @@ export function createGame(parent, { onComplete } = {}) {
         this.add.text(x + 14, y + 12, 'Finally, you are home!', {
           fontFamily: 'monospace', fontSize: '18px', color: '#352830', wordWrap: { width: 240 },
         }).setDepth(21);
-        this.time.delayedCall(2600, () => {
-          this.fadeToRestart();
+      });
+      this.time.delayedCall(3000, () => {
+        if (this.dying) return;
+        this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+          this.scene.start('Room', { health: this.health, bottles: this.collectedBottles, power: this.power });
         });
+        this.cameras.main.fadeOut(1400, 0, 0, 0);
       });
     }
 
@@ -464,7 +476,7 @@ export function createGame(parent, { onComplete } = {}) {
       if (Phaser.Input.Keyboard.JustDown(this.keys.R)) { this.scene.restart(); return; }
       if (this.health === 0) return;
       const grounded = this.fox.body.blocked.down;
-      if (grounded && this.fox.x >= this.bell.x - 65) { this.finishAdventure(); return; }
+      if (this.sys.settings.key === 'Street' && grounded && this.fox.x >= this.bell.x - 65) { this.finishAdventure(); return; }
       if (Phaser.Input.Keyboard.JustDown(this.keys.Q)) this.startPowerup(time);
       if (['drinking', 'flashing'].includes(this.power.phase)) {
         this.fox.setVelocityX(0);
@@ -512,5 +524,106 @@ export function createGame(parent, { onComplete } = {}) {
     }
 
   }
-  return new Phaser.Game({type:Phaser.AUTO,parent,width:960,height:540,pixelArt:true,backgroundColor:'#000000',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{gravity:{y:1100}}},scene:[Intro, Street]});
+  class Room extends Street {
+    constructor() { super('Room'); }
+
+    preload() {
+      super.preload();
+      this.load.image('room', '/games/fox-adventure/maps/room.png');
+      for (const [name, count] of [['idle', 6], ['walk', 8]]) {
+        this.load.spritesheet(`solo-${name}`, `/games/fox-adventure/sprites/solo/${name}.png`, {
+          frameWidth: 192, frameHeight: 176, endFrame: count - 1,
+        });
+      }
+    }
+
+    createLevel() {
+      this.levelWidth = 960;
+      const pavementY = 460;
+      this.physics.world.setBounds(20, 0, 920, 540);
+      this.cameras.main.setBounds(0, 0, 960, 540);
+      const source = this.textures.get('room').getSourceImage();
+      const scale = Math.max(960 / source.width, 540 / source.height);
+      this.add.image(480, 540, 'room').setOrigin(0.5, 1).setDisplaySize(source.width * scale, source.height * scale);
+      const platforms = this.physics.add.staticGroup();
+      const pavement = this.add.rectangle(480, pavementY + 40, 960, 80).setVisible(false);
+      this.physics.add.existing(pavement, true);
+      platforms.add(pavement);
+      return { pavement, platforms, pavementY, spawnX: 140 };
+    }
+
+    pickupLocations() { return []; }
+
+    create() {
+      this.roomCutscene = true;
+      super.create();
+      this.foxArt.play(this.power.phase === 'active' ? 'muscle-idle' : 'idle');
+      for (const [key, count, fps] of [['solo-idle', 6, 6], ['solo-walk', 8, 8]]) {
+        if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end: count - 1 }), frameRate: fps, repeat: -1 });
+      }
+      this.solo = this.add.sprite(1030, 460, 'solo-idle').setOrigin(0.5, 168 / 176)
+        .setScale(0.85).setFlipX(true).setDepth(3).play('solo-idle');
+      this.dialogue = [
+        { speaker: 'bell', text: 'Znowu jesteś pijany' },
+        { speaker: 'fox', text: 'Kurwa przepraszam no...wiem, że zjebałem. Biorę to na klate' },
+        { speaker: 'bell', text: 'Weź to na klatę nierobie jeden....SOLO! Bierz go!' },
+      ];
+      this.time.delayedCall(900, () => this.showDialogue(0));
+    }
+
+    showDialogue(index) {
+      this.speech?.destroy();
+      const line = this.dialogue[index];
+      if (!line) { this.introduceSolo(); return; }
+      const actor = line.speaker === 'fox' ? this.fox : this.bell;
+      const width = line.speaker === 'fox' ? 540 : 450;
+      const left = Phaser.Math.Clamp(line.speaker === 'fox' ? actor.x - 70 : actor.x - width + 40, 24, 936 - width);
+      const text = this.add.text(16, 14, line.text, {
+        fontFamily: 'monospace', fontSize: '18px', color: '#352830', lineSpacing: 6,
+        wordWrap: { width: width - 32, useAdvancedWrap: true },
+      });
+      const height = Math.max(64, text.height + 28);
+      const top = actor.y - 125 - height;
+      const bubble = this.add.graphics();
+      bubble.fillStyle(0xfff2d6).fillRoundedRect(0, 0, width, height, 8);
+      bubble.lineStyle(3, 0x352830).strokeRoundedRect(0, 0, width, height, 8);
+      const tail = Phaser.Math.Clamp(actor.x - left, 24, width - 24);
+      bubble.fillStyle(0xfff2d6).fillTriangle(tail - 10, height - 2, tail + 10, height - 2, tail, height + 20);
+      this.speech = this.add.container(left, top, [bubble, text]).setDepth(30);
+      text.setText('');
+      const letters = Array.from(line.text);
+      let count = 0;
+      this.time.addEvent({ delay: 35, repeat: letters.length - 1, callback: () => {
+        count++;
+        text.setText(letters.slice(0, count).join(''));
+        if (count === letters.length) this.time.delayedCall(index === 0 ? 1600 : 2300, () => this.showDialogue(index + 1));
+      } });
+    }
+
+    introduceSolo() {
+      this.bellHover.stop();
+      this.tweens.add({ targets: this.bell, x: 720, y: 140, duration: 1200, ease: 'Sine.InOut', onComplete: () => {
+        this.tweens.add({ targets: this.bell, x: 240, duration: 4200, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+        this.tweens.add({ targets: this.bell, y: 132, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+        this.solo.play('solo-walk');
+        this.tweens.add({ targets: this.solo, x: 765, duration: 1800, ease: 'Linear', onComplete: () => {
+          this.solo.play('solo-idle');
+          this.roomCutscene = false;
+          Object.values(this.keys).forEach(key => key.reset());
+          this.wasJump = false;
+        } });
+      } });
+    }
+
+    update(time) {
+      if (this.roomCutscene) {
+        if (this.power.expire(time)) this.endPowerup();
+        this.updatePowerHud(time);
+        this.fox.setVelocityX(0);
+        return;
+      }
+      super.update(time);
+    }
+  }
+  return new Phaser.Game({type:Phaser.AUTO,parent,width:960,height:540,pixelArt:true,backgroundColor:'#000000',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{gravity:{y:1100}}},scene:[Intro, Street, Room]});
 }
