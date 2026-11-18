@@ -295,12 +295,7 @@ export function createGame(parent, { onComplete } = {}) {
       this.foxArt.once('animationcomplete-drink', () => {
         if (this.dying || this.ending || this.power.phase !== 'drinking') return;
         this.power.phase = 'flashing';
-        let white = false;
-        this.time.addEvent({ delay: 100, repeat: 5, callback: () => {
-          if (this.ending || this.dying) return;
-          white = !white;
-          if (white) this.foxArt.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL); else this.foxArt.clearTint();
-        } });
+        this.flashWhite();
         this.time.delayedCall(700, () => {
           if (this.dying || this.ending) return;
           this.power.activate(this.time.now);
@@ -311,9 +306,23 @@ export function createGame(parent, { onComplete } = {}) {
       this.foxArt.play('drink');
     }
 
+    flashWhite() {
+      if (this.ending || this.dying) return;
+      this.whiteFlash?.remove(false);
+      let white = true;
+      this.foxArt.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+      this.whiteFlash = this.time.addEvent({ delay: 100, repeat: 4, callback: () => {
+        if (this.ending || this.dying) return;
+        white = !white;
+        if (white) this.foxArt.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+        else this.foxArt.clearTint();
+      } });
+    }
+
     endPowerup() {
       this.punchUntil = 0;
       this.foxArt.clearTint().play('idle');
+      this.flashWhite();
       this.drawHearts();
     }
 
