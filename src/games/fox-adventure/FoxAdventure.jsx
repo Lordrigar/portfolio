@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PixelText from './PixelText.jsx';
+import { SynthwaveScene } from '../../SynthwaveLanding.jsx';
 
 export default function FoxAdventure() {
   const container = useRef(null);
@@ -49,9 +50,14 @@ export default function FoxAdventure() {
     }
   }
 
-  return <main className="game-page">
-    <Link className="back-link" to="/games/">← All games</Link>
-    <header><h1>Fox&rsquo;s Adventure</h1></header>
+  return <main className="synth-landing synth-player">
+    <SynthwaveScene />
+    <nav className="synth-nav" aria-label="Game navigation">
+      <Link className="synth-wordmark" to="/games/"><span aria-hidden="true">←</span> ALL GAMES</Link>
+      <Link to="/">Portfolio <span aria-hidden="true">↗</span></Link>
+    </nav>
+    <section className="game-page synth-player-panel" aria-labelledby="fox-title">
+    <header><h1 id="fox-title">Fox&rsquo;s Adventure</h1></header>
     <ul className="key-map" aria-label="Keyboard controls">
       <li><span><kbd>A</kbd><kbd>D</kbd></span> Move</li>
       <li><kbd>W</kbd> Jump</li>
@@ -72,5 +78,6 @@ export default function FoxAdventure() {
         setRun(value => value + 1);
       }}>Restart Adventure</button></div>}
     </div>}
+    </section>
   </main>;
 }

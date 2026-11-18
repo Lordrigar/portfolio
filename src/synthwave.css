@@ -1,4 +1,4 @@
-#root:has(.synth-landing) { padding: 0; background: #090211; }
+#root:has(main.synth-landing) { padding: 0; background: #090211; }
 
 .synth-landing {
   isolation: isolate;
@@ -125,3 +125,44 @@
   .synth-game-copy p { font-size: 15px; margin: 16px 0 24px; }
 }
 @media (prefers-reduced-motion: reduce) { .synth-game-card { transition: none; } .synth-game-card:hover { transform: none; } }
+
+.synth-player .synth-scene { opacity: .6; }
+.synth-player .synth-sun { opacity: .45; }
+.synth-player .synth-palms { opacity: .6; }
+.synth-player .synth-nav { padding-top: 22px; padding-bottom: 22px; }
+.synth-player .synth-player-panel {
+  position: relative;
+  width: calc(100% - 64px);
+  max-width: 1100px;
+  margin: 16px auto 48px;
+  padding: 28px;
+  border: 1px solid #ba5bc480;
+  background: #160b25f2;
+  box-shadow: 0 0 0 5px #13082077, 0 20px 65px #06010da6, 0 0 40px #e446c61a;
+}
+.synth-player .synth-player-panel h1 {
+  color: #f5b7ec;
+  font-family: 'Arial Black', 'Helvetica Neue', Arial, sans-serif;
+  font-size: clamp(26px, 4vw, 42px);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: -.045em;
+  line-height: 1.15;
+  text-shadow: 0 2px 0 #5a1f67, 0 0 24px #e655d02e;
+}
+.synth-player-panel .key-map { margin-top: 22px; padding: 13px 16px; gap: 12px 22px; border: 1px solid #78438566; border-radius: 0; background: #210e32; }
+.synth-player-panel .key-map li { color: #cab3db; font-size: .8rem; }
+.synth-player-panel .key-map kbd { min-width: 27px; height: 27px; border-color: #9561a3; border-bottom-color: #634378; border-radius: 3px; background: #392044; color: #ffe4fa; font-size: .75rem; box-shadow: 0 0 9px #e446c610; }
+.synth-player-panel p.cursor-hint { margin: 12px 0 18px; color: #b398c7; font-size: .75rem; }
+.synth-player-panel .game-canvas { border: 1px solid #c16bc2; border-radius: 0; box-shadow: 0 0 0 4px #200c2d, 0 0 25px #d43bb622; }
+.synth-player-panel .start-adventure { border: 1px solid #ef8ae0; color: #fce1f8; background: #180a29e6; box-shadow: 0 0 24px #d928b52b, inset 0 0 15px #d928b510; }
+.synth-player-panel .start-adventure:hover { background: #3e1549; color: #fff; box-shadow: 0 0 30px #ef59dd55; }
+.synth-player-panel .start-adventure:focus-visible { outline: 2px solid #e7c7ff; outline-offset: 6px; }
+.synth-player-panel .defeat-title { color: #f5b7ec; filter: drop-shadow(0 0 12px #e655d044); }
+@media (max-width: 650px) {
+  .synth-player .synth-nav { padding: 20px; }
+  .synth-player .synth-player-panel { width: calc(100% - 32px); margin-top: 8px; padding: 20px 14px; }
+  .synth-player-panel .key-map { margin-top: 20px; padding: 12px; gap: 10px 16px; }
+  .synth-player-panel .key-map li { font-size: .7rem; gap: 6px; }
+  .synth-player-panel p.cursor-hint { font-size: .7rem; }
+}
