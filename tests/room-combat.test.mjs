@@ -75,7 +75,8 @@ test('a muscle punch delivers 25 damage once even across multiple overlap frames
 
 test('Solo death disables his collider and plays death only once', () => {
   const { room } = roomWithCollisions();
-  let deaths = 0, cleared = 0;
+  let deaths = 0, cleared = 0, victories = 0;
+  room.beginVictory = () => victories++;
   room.soloHealth = 25;
   room.soloBody.body.enable = true;
   room.slippers.clear = () => cleared++;
@@ -90,6 +91,7 @@ test('Solo death disables his collider and plays death only once', () => {
   assert.equal(room.soloBody.body.enable, false);
   assert.equal(deaths, 1);
   assert.equal(cleared, 1);
+  assert.equal(victories, 1);
 });
 
 
@@ -116,4 +118,67 @@ test('Solo heavy punch applies one heart once at impact, and can be interrupted'
     callbacks[0]();
     assert.equal(damage, interrupt ? 0 : 1);
   }
+});
+
+
+test('victory stops retaliation and keeps Fox safe while Bell approaches Solo', () => {
+  const { room } = roomWithCollisions();
+  let timersCancelled = 0, projectilesCleared = 0;
+  room.time.removeAllEvents = () => timersCancelled++;
+  room.bottles.clear = () => projectilesCleared++;
+  room.tweens = { killTweensOf() {} };
+  room.power = { phase: 'idle' };
+  room.setCrouching = () => {};
+  room.fox.setVelocity = () => {};
+  room.foxArt = { clearTint() { return this; }, setAlpha() { return this; }, setAngle() { return this; }, play() { return this; } };
+  room.beginVictory();
+  assert.equal(room.victory, true);
+  assert.equal(room.ending, true);
+  assert.equal(room.roomCutscene, true);
+  assert.equal(timersCancelled, 1);
+  assert.equal(projectilesCleared, 1);
+});
+
+test('Bell and Solo leave before fading to the restart screen', () => {
+  const { room } = roomWithCollisions();
+  const tweens = [], played = [];
+  let riseFinished, lineFinished, message, fadeCount = 0;
+  const delayed = [];
+  room.ending = true;
+  room.roomCutscene = true;
+  room.time.delayedCall = (delay, callback) => delayed.push({ delay, callback });
+  room.fadeToRestart = () => fadeCount++;
+  const actor = {
+    x: 300, y: 460,
+    play(key) { played.push(key); return this; }, setFlipX() { return this; },
+    setVisible(value) { this.visible = value; return this; },
+    once(event, callback) { assert.equal(event, 'animationcomplete-solo-rise'); riseFinished = callback; },
+  };
+  room.solo = { ...actor };
+  room.bell = { ...actor, x: 650 };
+  room.fox.x = 140;
+  room.tweens = { add: config => tweens.push(config) };
+  room.printSpeech = (_actor, text, callback) => { message = text; lineFinished = callback; };
+  room.keys = { W: { reset() {} } };
+  room.bellFliesToSolo();
+  assert.equal(tweens[0].targets, room.bell);
+  assert.equal(tweens[0].x, 385);
+  tweens[0].onComplete();
+  assert.equal(message, 'Coś Ty zrobił bandyto! Śpisz na kanapie. Solo, piesku, chodźmy...');
+  lineFinished();
+  assert.ok(played.includes('solo-rise'));
+  riseFinished();
+  assert.ok(played.includes('solo-walk'));
+  const exits = tweens.slice(1);
+  assert.equal(exits.length, 2);
+  assert.ok(exits.every(tween => tween.x > 960));
+  exits.find(tween => tween.targets === room.solo).onComplete();
+  assert.equal(room.bell.visible, false);
+  assert.equal(room.solo.visible, false);
+  assert.equal(room.ending, true);
+  assert.equal(room.roomCutscene, true);
+  assert.equal(fadeCount, 0);
+  assert.equal(delayed[0].delay, 500);
+  delayed[0].callback();
+  assert.equal(fadeCount, 1);
 });

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { installGameScrollGuard } from './input.mjs';
 import { PowerupState, POWER_DURATION } from './powerup.mjs';
 import { SOLO_HEALTH, BOTTLE_DAMAGE, PUNCH_DAMAGE, SLIPPER_GRAVITY, slipperTrajectory, remainingSoloHealth, SoloBrain, soloPunchBounds, rectanglesOverlap } from './combat.mjs';
 
@@ -71,6 +72,7 @@ export function createGame(parent, { onComplete } = {}) {
         texture.refresh();
       }
       this.ending = false;
+      this.victory = false;
       this.dying = false;
       this.defeatPause = 650;
       this.fading = false;
@@ -171,16 +173,7 @@ export function createGame(parent, { onComplete } = {}) {
         this.updateBottleCounter();
       });
       this.keys=this.input.keyboard.addKeys('W,A,S,D,SPACE,SHIFT,R,Q');
-      // Register after Phaser's listener: preventing default earlier would make
-      // Phaser discard Space before the throw action can receive it.
-      const preventScroll = (event) => {
-        if (event.ctrlKey || event.metaKey || event.altKey) return;
-        if (event.target instanceof HTMLElement &&
-            (event.target.isContentEditable || event.target.closest('input, textarea, select, button, a'))) return;
-        if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
-      };
-      window.addEventListener('keydown', preventScroll, { passive: false });
-      this.events.once('shutdown', () => window.removeEventListener('keydown', preventScroll));
+      installGameScrollGuard(this.events);
       this.cameras.main.startFollow(this.fox, true, 0.1, 1);
       this.cameras.main.setDeadzone(300, 540);
       this.cameras.main.setScroll(0, 0);
@@ -367,7 +360,7 @@ export function createGame(parent, { onComplete } = {}) {
     }
 
     takeDamage(amount = 1) {
-      if (!Number.isFinite(amount) || amount < 1 || this.health + this.power.bonusHealth <= 0 || this.dying || this.time.now < this.invulnerableUntil) return false;
+      if (!Number.isFinite(amount) || amount < 1 || this.health + this.power.bonusHealth <= 0 || this.dying || this.victory || this.time.now < this.invulnerableUntil) return false;
       this.health = Math.max(0, this.health - this.power.absorbDamage(Math.floor(amount)));
       this.invulnerableUntil = this.time.now + 800;
       this.drawHearts();
@@ -568,6 +561,9 @@ export function createGame(parent, { onComplete } = {}) {
       for (const [key, count, fps] of [['solo-idle', 6, 6], ['solo-walk', 8, 8], ['solo-hit', 4, 10], ['solo-death', 8, 8], ['solo-punch', 8, 12]]) {
         if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end: count - 1 }), frameRate: fps, repeat: key === 'solo-idle' || key === 'solo-walk' ? -1 : 0 });
       }
+      if (!this.anims.exists('solo-rise')) this.anims.create({
+        key: 'solo-rise', frames: this.anims.generateFrameNumbers('solo-death', { start: 0, end: 7 }).reverse(), frameRate: 10, repeat: 0,
+      });
       this.solo = this.add.sprite(1030, 460, 'solo-idle').setOrigin(0.5, 168 / 176)
         .setScale(0.85).setFlipX(true).setDepth(3).play('solo-idle');
       this.setupCombat();
@@ -645,13 +641,61 @@ export function createGame(parent, { onComplete } = {}) {
         this.soloAI?.defeat();
         this.soloBody.body.enable = false;
         this.slippers.clear(true, true);
+        this.beginVictory();
         this.solo.clearTint().play('solo-death');
-        this.solo.once('animationcomplete-solo-death', () => this.soloBar.setVisible(false));
+        this.solo.once('animationcomplete-solo-death', () => {
+          this.soloBar.setVisible(false);
+          this.bellFliesToSolo();
+        });
       } else {
         this.soloAI?.stun(this.time.now);
         this.solo.setTint(0xffb7a5).play('solo-hit');
         this.time.delayedCall(120, () => this.solo.clearTint());
       }
+    }
+
+    beginVictory() {
+      this.victory = true;
+      this.ending = true;
+      this.roomCutscene = true;
+      // Remove retaliation and pending strikes before starting the final scene.
+      this.time.removeAllEvents();
+      this.bottles.clear(true, true);
+      this.slipperMarkers.forEach(marker => marker.destroy());
+      this.slipperMarkers.clear();
+      this.tweens.killTweensOf(this.bell);
+      this.tweens.killTweensOf(this.foxArt);
+      if (['drinking', 'flashing'].includes(this.power.phase)) this.power.cancel();
+      this.setCrouching(false);
+      this.fox.setVelocity(0, 0);
+      this.foxArt.clearTint().setAlpha(1).setAngle(0)
+        .play(this.power.phase === 'active' ? 'muscle-idle' : 'idle', true);
+    }
+
+    bellFliesToSolo() {
+      this.bell.play('bell-idle', true);
+      this.tweens.add({ targets: this.bell, x: Math.min(865, this.solo.x + 85), y: 425,
+        duration: 1200, ease: 'Sine.InOut', onComplete: () => {
+          this.bell.setFlipX(this.fox.x > this.bell.x);
+          this.printSpeech(this.bell, 'Coś Ty zrobił bandyto! Śpisz na kanapie. Solo, piesku, chodźmy...',
+            () => this.leaveWithSolo(), 2600, 500);
+        } });
+    }
+
+    leaveWithSolo() {
+      this.speech?.destroy();
+      this.solo.play('solo-rise');
+      this.solo.once('animationcomplete-solo-rise', () => {
+        this.solo.setFlipX(false).play('solo-walk');
+        this.bell.setFlipX(true);
+        const duration = Math.max(1600, (1080 - this.solo.x) / 150 * 1000);
+        this.tweens.add({ targets: this.bell, x: 1140, duration, ease: 'Linear' });
+        this.tweens.add({ targets: this.solo, x: 1080, duration, ease: 'Linear', onComplete: () => {
+          this.solo.setVisible(false);
+          this.bell.setVisible(false);
+          this.time.delayedCall(500, () => this.fadeToRestart());
+        } });
+      });
     }
 
     updateSolo(time, delta) {
@@ -738,9 +782,14 @@ export function createGame(parent, { onComplete } = {}) {
       const line = this.dialogue[index];
       if (!line) { this.introduceSolo(); return; }
       const actor = line.speaker === 'fox' ? this.fox : this.bell;
-      const width = line.speaker === 'fox' ? 540 : 450;
-      const left = Phaser.Math.Clamp(line.speaker === 'fox' ? actor.x - 70 : actor.x - width + 40, 24, 936 - width);
-      const text = this.add.text(16, 14, line.text, {
+      this.printSpeech(actor, line.text, () => this.showDialogue(index + 1), index === 0 ? 1600 : 2300,
+        line.speaker === 'fox' ? 540 : 450);
+    }
+
+    printSpeech(actor, message, onFinished, hold = 2300, width = 450) {
+      this.speech?.destroy();
+      const left = Phaser.Math.Clamp(actor === this.fox ? actor.x - 70 : actor.x - width + 40, 24, 936 - width);
+      const text = this.add.text(16, 14, message, {
         fontFamily: 'monospace', fontSize: '18px', color: '#352830', lineSpacing: 6,
         wordWrap: { width: width - 32, useAdvancedWrap: true },
       });
@@ -753,12 +802,12 @@ export function createGame(parent, { onComplete } = {}) {
       bubble.fillStyle(0xfff2d6).fillTriangle(tail - 10, height - 2, tail + 10, height - 2, tail, height + 20);
       this.speech = this.add.container(left, top, [bubble, text]).setDepth(30);
       text.setText('');
-      const letters = Array.from(line.text);
+      const letters = Array.from(message);
       let count = 0;
       this.time.addEvent({ delay: 35, repeat: letters.length - 1, callback: () => {
         count++;
         text.setText(letters.slice(0, count).join(''));
-        if (count === letters.length) this.time.delayedCall(index === 0 ? 1600 : 2300, () => this.showDialogue(index + 1));
+        if (count === letters.length) this.time.delayedCall(hold, onFinished);
       } });
     }
 
