@@ -1,5 +1,5 @@
 services:
-  landingpage:
+  portfolio:
     build: .
     restart: unless-stopped
     ports:
