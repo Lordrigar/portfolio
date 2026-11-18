@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PowerupState, POWER_DURATION } from './powerup.mjs';
+import { SOLO_HEALTH, BOTTLE_DAMAGE, PUNCH_DAMAGE, SLIPPER_GRAVITY, slipperTrajectory, remainingSoloHealth } from './combat.mjs';
 
 export function createGame(parent, { onComplete } = {}) {
   class Intro extends Phaser.Scene {
@@ -339,13 +340,14 @@ export function createGame(parent, { onComplete } = {}) {
       this.nextPunch = time + 500;
       this.punchUntil = time + 430;
       this.foxArt.play('muscle-punch', true);
+      this.events.emit('player-attack', { kind: 'punch' });
       this.time.delayedCall(160, () => {
         if (this.ending || this.power.phase !== 'active') return;
         const direction = this.fox.flipX ? -1 : 1;
         const hitbox = this.add.zone(this.fox.x + direction * 48, this.fox.y - 42, 48, 42);
         this.physics.add.existing(hitbox);
         hitbox.body.setAllowGravity(false);
-        this.events.emit('player-punch', { hitbox, damage: 2, direction });
+        this.events.emit('player-punch', { hitbox, damage: PUNCH_DAMAGE, direction });
         this.time.delayedCall(140, () => hitbox.destroy());
       });
     }
@@ -467,6 +469,7 @@ export function createGame(parent, { onComplete } = {}) {
       this.throwUntil = time + 430;
       this.nextThrow = time + 500;
       this.foxArt.play('throw', true);
+      this.events.emit('player-attack', { kind: 'bottle' });
     }
 
     update(time) {
@@ -529,8 +532,9 @@ export function createGame(parent, { onComplete } = {}) {
 
     preload() {
       super.preload();
+      this.load.image('slipper', '/games/fox-adventure/sprites/slipper.png');
       this.load.image('room', '/games/fox-adventure/maps/room.png');
-      for (const [name, count] of [['idle', 6], ['walk', 8]]) {
+      for (const [name, count] of [['idle', 6], ['walk', 8], ['hit', 4], ['death', 8]]) {
         this.load.spritesheet(`solo-${name}`, `/games/fox-adventure/sprites/solo/${name}.png`, {
           frameWidth: 192, frameHeight: 176, endFrame: count - 1,
         });
@@ -549,6 +553,7 @@ export function createGame(parent, { onComplete } = {}) {
       const pavement = this.add.rectangle(480, pavementY + 40, 960, 80).setVisible(false);
       this.physics.add.existing(pavement, true);
       platforms.add(pavement);
+      this.roomFloor = pavement;
       return { pavement, platforms, pavementY, spawnX: 140 };
     }
 
@@ -558,17 +563,114 @@ export function createGame(parent, { onComplete } = {}) {
       this.roomCutscene = true;
       super.create();
       this.foxArt.play(this.power.phase === 'active' ? 'muscle-idle' : 'idle');
-      for (const [key, count, fps] of [['solo-idle', 6, 6], ['solo-walk', 8, 8]]) {
-        if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end: count - 1 }), frameRate: fps, repeat: -1 });
+      for (const [key, count, fps] of [['solo-idle', 6, 6], ['solo-walk', 8, 8], ['solo-hit', 4, 10], ['solo-death', 8, 8]]) {
+        if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end: count - 1 }), frameRate: fps, repeat: key === 'solo-idle' || key === 'solo-walk' ? -1 : 0 });
       }
       this.solo = this.add.sprite(1030, 460, 'solo-idle').setOrigin(0.5, 168 / 176)
         .setScale(0.85).setFlipX(true).setDepth(3).play('solo-idle');
+      this.setupCombat();
       this.dialogue = [
         { speaker: 'bell', text: 'Znowu jesteś pijany' },
         { speaker: 'fox', text: 'Kurwa przepraszam no...wiem, że zjebałem. Biorę to na klatę' },
         { speaker: 'bell', text: 'Weź to na klatę nierobie jeden....SOLO! Bierz go!' },
       ];
       this.time.delayedCall(900, () => this.showDialogue(0));
+    }
+
+    setupCombat() {
+      this.soloHealth = SOLO_HEALTH;
+      this.soloBody = this.add.zone(765, 405, 60, 110);
+      this.physics.add.existing(this.soloBody, true);
+      this.soloBody.body.enable = false;
+      this.soloBar = this.add.container(765, 320).setDepth(8).setVisible(false);
+      this.soloBarGraphics = this.add.graphics();
+      this.soloBarLabel = this.add.text(0, -15, 'SOLO  100 / 100', {
+        fontFamily: 'monospace', fontSize: '13px', color: '#fff0ce', stroke: '#15121c', strokeThickness: 3,
+      }).setOrigin(0.5);
+      this.soloBar.add([this.soloBarGraphics, this.soloBarLabel]);
+      this.slippers = this.physics.add.group();
+      this.slipperMarkers = new Set();
+      this.physics.add.collider(this.roomFloor, this.slippers, (_floor, slipper) => slipper.destroy());
+      this.physics.add.overlap(this.fox, this.slippers, (_fox, slipper) => {
+        if (this.ending || !slipper.active) return;
+        slipper.destroy();
+        this.takeDamage(1);
+      });
+      this.physics.add.overlap(this.soloBody, this.bottles, (_solo, bottle) => {
+        if (!bottle.active || this.soloHealth <= 0 || this.roomCutscene || this.ending) return;
+        this.damageSolo(BOTTLE_DAMAGE);
+        this.breakBottle(bottle);
+      });
+      const punchHit = ({ hitbox, damage }) => {
+        if (this.roomCutscene || this.ending || this.soloHealth <= 0) return;
+        const overlap = this.physics.add.overlap(hitbox, this.soloBody, () => {
+          if (!hitbox.body?.enable || this.soloHealth <= 0 || this.ending) return;
+          hitbox.body.enable = false;
+          this.damageSolo(damage);
+        });
+        this.time.delayedCall(140, () => overlap.destroy());
+      };
+      this.events.on('player-attack', this.throwSlipper, this);
+      this.events.on('player-punch', punchHit);
+      this.events.once('shutdown', () => {
+        this.events.off('player-attack', this.throwSlipper, this);
+        this.events.off('player-punch', punchHit);
+      });
+    }
+
+    drawSoloHealth() {
+      const width = 110;
+      this.soloBarGraphics.clear().fillStyle(0x14111c).fillRect(-58, -3, 116, 17);
+      this.soloBarGraphics.fillStyle(0x552a38).fillRect(-55, 0, width, 10);
+      const fill = Math.ceil(width * this.soloHealth / SOLO_HEALTH);
+      if (fill) this.soloBarGraphics.fillStyle(0xe66b65).fillRect(-55, 0, fill, 10);
+      this.soloBarGraphics.lineStyle(1, 0xf3cf9c).strokeRect(-58, -3, 116, 17);
+      this.soloBarLabel.setText(`SOLO  ${this.soloHealth} / ${SOLO_HEALTH}`);
+    }
+
+    damageSolo(damage) {
+      if (this.soloHealth <= 0 || this.roomCutscene || this.ending) return;
+      this.soloHealth = remainingSoloHealth(this.soloHealth, damage);
+      this.drawSoloHealth();
+      if (this.soloHealth === 0) {
+        this.soloBody.body.enable = false;
+        this.slippers.clear(true, true);
+        this.solo.clearTint().play('solo-death');
+        this.solo.once('animationcomplete-solo-death', () => this.soloBar.setVisible(false));
+      } else {
+        this.solo.setTint(0xffb7a5).play('solo-hit');
+        this.time.delayedCall(120, () => this.solo.clearTint());
+        this.solo.once('animationcomplete-solo-hit', () => {
+          if (this.soloHealth > 0) this.solo.play('solo-idle');
+        });
+      }
+    }
+
+    throwSlipper() {
+      if (this.roomCutscene || this.ending || this.soloHealth <= 0) return;
+      const target = { x: this.fox.body.center.x, y: this.fox.body.center.y };
+      const marker = this.add.graphics().setDepth(4);
+      marker.lineStyle(2, 0xffd178, 0.9).strokeEllipse(target.x, this.fox.y, 28, 8);
+      this.slipperMarkers.add(marker);
+      this.time.delayedCall(220, () => {
+        marker.destroy();
+        this.slipperMarkers.delete(marker);
+        if (this.ending || this.soloHealth <= 0) return;
+        const start = { x: this.bell.x - 8, y: this.bell.y - 32 };
+        const { vx, vy } = slipperTrajectory(start, target);
+        const slipper = this.slippers.create(start.x, start.y, 'slipper').setScale(0.85);
+        slipper.body.setSize(48, 28).setOffset(8, 10);
+        slipper.setGravityY(SLIPPER_GRAVITY - this.physics.world.gravity.y).setVelocity(vx, vy);
+        slipper.setAngularVelocity(vx < 0 ? -400 : 400);
+        this.time.delayedCall(2600, () => { if (slipper.active) slipper.destroy(); });
+      });
+    }
+
+    playDeath() {
+      this.slippers.clear(true, true);
+      this.slipperMarkers.forEach(marker => marker.destroy());
+      this.slipperMarkers.clear();
+      super.playDeath();
     }
 
     showDialogue(index) {
@@ -609,6 +711,9 @@ export function createGame(parent, { onComplete } = {}) {
         this.tweens.add({ targets: this.solo, x: 765, duration: 1800, ease: 'Linear', onComplete: () => {
           this.solo.play('solo-idle');
           this.roomCutscene = false;
+          this.soloBody.body.enable = true;
+          this.soloBar.setVisible(true);
+          this.drawSoloHealth();
           Object.values(this.keys).forEach(key => key.reset());
           this.wasJump = false;
         } });
