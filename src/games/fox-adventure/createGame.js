@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { PowerupState, POWER_DURATION } from './powerup.mjs';
 
 export function createGame(parent, { onComplete } = {}) {
   class Intro extends Phaser.Scene {
@@ -38,6 +39,10 @@ export function createGame(parent, { onComplete } = {}) {
   class Street extends Phaser.Scene {
     constructor() { super('Street'); }
     preload() {
+      this.load.spritesheet('drink', '/games/fox-adventure/sprites/powerup/drink.png', { frameWidth: 320, frameHeight: 320 });
+      for (const name of ['idle', 'walk', 'run', 'jump', 'crouch', 'punch']) {
+        this.load.spritesheet(`muscle-${name}`, `/games/fox-adventure/sprites/muscle/${name}.png`, { frameWidth: 192, frameHeight: 176 });
+      }
       this.load.spritesheet('death', '/games/fox-adventure/sprites/death/death.png', { frameWidth: 192, frameHeight: 176 });
       this.load.spritesheet('bell-idle', '/games/fox-adventure/sprites/bell/idle.png', { frameWidth: 320, frameHeight: 288 });
       this.load.spritesheet('bell-attack', '/games/fox-adventure/sprites/bell/attack.png', { frameWidth: 320, frameHeight: 288 });
@@ -68,6 +73,12 @@ export function createGame(parent, { onComplete } = {}) {
       this.fading = false;
       this.collectedBottles = 0;
       this.health = 3;
+      this.power = new PowerupState();
+      this.nextPunch = 0;
+      this.wasGrounded = true;
+      this.jumpStartUntil = 0;
+      this.landingUntil = 0;
+      this.punchUntil = 0;
       this.invulnerableUntil = 0;
       this.wasJump = false;
       this.throwUntil = 0;
@@ -123,6 +134,13 @@ export function createGame(parent, { onComplete } = {}) {
       if (!this.anims.exists('death')) this.anims.create({
         key: 'death', frames: this.anims.generateFrameNumbers('death', { start: 0, end: 6 }), frameRate: 7, repeat: 0,
       });
+      for (const [key, count, fps, repeat] of [
+        ['drink', 8, 8, 0], ['muscle-idle', 4, 5, -1], ['muscle-walk', 8, 9, -1],
+        ['muscle-run', 8, 14, -1], ['muscle-jump', 4, 10, 0],
+        ['muscle-crouch', 3, 10, 0], ['muscle-punch', 6, 14, 0],
+      ]) {
+        if (!this.anims.exists(key)) this.anims.create({ key, frames: this.anims.generateFrameNumbers(key, { start: 0, end: count - 1 }), frameRate: fps, repeat });
+      }
       this.bottles = this.physics.add.group();
       this.physics.add.collider(this.bottles, platforms, (bottle) => this.breakBottle(bottle), (bottle, platform) => {
         if (platform === pavement) return true;
@@ -136,7 +154,8 @@ export function createGame(parent, { onComplete } = {}) {
       // Render one visible character after physics has finished positioning it.
       const syncArtwork = () => {
         this.foxArt.setPosition(this.fox.x, this.fox.y).setFlipX(this.fox.flipX);
-        this.foxArt.setScale(0.55);
+        const drinking = this.power.phase === 'drinking' || this.power.phase === 'flashing';
+        this.foxArt.setOrigin(0.5, drinking ? 302 / 320 : 165 / 176).setScale(drinking ? 0.28 : 0.55);
       };
       this.events.on('postupdate', syncArtwork);
       this.events.once('shutdown', () => this.events.off('postupdate', syncArtwork));
@@ -164,6 +183,14 @@ export function createGame(parent, { onComplete } = {}) {
       this.add.rectangle(770, 78, 166, 44, 0x10121c, 0.9).setOrigin(0).setStrokeStyle(1, 0x766c70).setScrollFactor(0).setDepth(10);
       this.hearts = this.add.graphics().setScrollFactor(0).setDepth(11);
       this.drawHearts();
+      this.add.rectangle(626, 22, 134, 48, 0x10121c, 0.9).setOrigin(0).setStrokeStyle(1, 0x766c70).setScrollFactor(0).setDepth(10);
+      const powerIcon = this.add.graphics().setScrollFactor(0).setDepth(11);
+      this.drawBeer(powerIcon, 640, 34, 0.5, 1);
+      this.powerCounter = this.add.text(673, 46, 'Q READY', { fontFamily: 'monospace', fontSize: '15px', color: '#f3d475' })
+        .setOrigin(0, 0.5).setScrollFactor(0).setDepth(11);
+      this.beerTimer = this.add.graphics().setScrollFactor(0).setDepth(11).setVisible(false);
+      this.beerSeconds = this.add.text(480, 96, '', { fontFamily: 'monospace', fontSize: '14px', color: '#ffe1a3' })
+        .setOrigin(0.5).setScrollFactor(0).setDepth(11).setVisible(false);
       this.events.on('player-hit', this.takeDamage, this);
       this.events.once('shutdown', () => this.events.off('player-hit', this.takeDamage, this));
       this.physics.add.overlap(this.fox, this.pickups, (_fox, pickup) => {
@@ -171,10 +198,9 @@ export function createGame(parent, { onComplete } = {}) {
         this.tweens.killTweensOf(pickup);
         pickup.disableBody(true, true);
         this.collectedBottles += 1;
-        this.bottleCounter.setText(`${this.collectedBottles} / 3`);
-        if (this.collectedBottles === 3) this.bottleCounter.setColor('#79d7be');
+        this.updateBottleCounter();
       });
-      this.keys=this.input.keyboard.addKeys('W,A,S,D,SPACE,SHIFT,R');
+      this.keys=this.input.keyboard.addKeys('W,A,S,D,SPACE,SHIFT,R,Q');
       // Register after Phaser's listener: preventing default earlier would make
       // Phaser discard Space before the throw action can receive it.
       const preventScroll = (event) => {
@@ -194,29 +220,139 @@ export function createGame(parent, { onComplete } = {}) {
 
     drawHearts() {
       const pixels = ['0110110', '1111111', '1111111', '0111110', '0011100', '0001000'];
+      const powered = this.power.phase === 'active';
+      const count = powered ? 5 : 3;
+      const size = 3;
+      const gap = powered ? 28 : 37;
+      const start = 770 + Math.round((166 - ((count - 1) * gap + 7 * size)) / 2);
       this.hearts.clear();
-      for (let heart = 0; heart < 3; heart++) {
-        const x = 799 + heart * 40;
-        const filled = heart < this.health;
+      for (let heart = 0; heart < count; heart++) {
+        const x = start + heart * gap;
+        const bonus = heart >= 3;
+        const filled = bonus ? heart - 3 < this.power.bonusHealth : heart < this.health;
         pixels.forEach((row, y) => {
           [...row].forEach((pixel, column) => {
             if (pixel !== '1') return;
-            this.hearts.fillStyle(0x090d14).fillRect(x + column * 4 + 1, 90 + y * 4, 4, 4);
-            this.hearts.fillStyle(filled ? 0xf06477 : 0x483945).fillRect(x + column * 4, 88 + y * 4, 4, 4);
+            this.hearts.fillStyle(0x090d14).fillRect(x + column * size + 1, 93 + y * size, size, size);
+            this.hearts.fillStyle(filled ? (bonus ? 0xffce55 : 0xf06477) : 0x483945)
+              .fillRect(x + column * size, 91 + y * size, size, size);
           });
         });
-        if (filled) this.hearts.fillStyle(0xffc5c5).fillRect(x + 4, 92, 8, 4);
+        if (filled) this.hearts.fillStyle(0xffedcb).fillRect(x + size, 94, size * 2, size);
       }
     }
 
+    updateBottleCounter() {
+      this.bottleCounter.setText(`${this.collectedBottles} / 3`)
+        .setColor(this.collectedBottles === 3 ? '#79d7be' : '#f3e9d3');
+    }
+
+    drawBeer(graphics, x, y, scale, fraction) {
+      const rect = (color, dx, dy, w, h) => graphics.fillStyle(color).fillRect(x + dx * scale, y + dy * scale, w * scale, h * scale);
+      rect(0x0b111b, -8, -8, 64, 92);
+      rect(0xf6dfb2, 40, 16, 14, 36);
+      rect(0x17232a, 44, 22, 6, 24);
+      rect(0xf6dfb2, 0, 8, 44, 64);
+      rect(0x29353b, 4, 12, 36, 56);
+      const fill = Math.max(0, Math.min(1, fraction));
+      const height = Math.ceil(48 * fill / 4) * 4;
+      if (height > 0) {
+        rect(0xf1ae29, 4, 68 - height, 36, height);
+        rect(0xffd15c, 8, 68 - height, 8, height);
+        rect(0xfff0ca, 4, 64 - height, 36, 8);
+      }
+      rect(0xffffff, 8, 16, 4, 8);
+    }
+
+    updatePowerHud(time) {
+      const active = this.power.phase === 'active';
+      const preparing = ['drinking', 'flashing'].includes(this.power.phase);
+      const cooldown = this.power.cooldown(time);
+      this.powerCounter.setText(preparing ? 'Q ...' : cooldown ? `Q ${cooldown}s` : 'Q READY');
+      this.beerTimer.setVisible(active).clear();
+      this.beerSeconds.setVisible(active);
+      if (active) {
+        this.drawBeer(this.beerTimer, 458, 18, 0.8, this.power.remaining(time) / POWER_DURATION);
+        this.beerSeconds.setText(`${Math.ceil(this.power.remaining(time) / 1000)}s`);
+      }
+    }
+
+    startPowerup(time) {
+      const result = this.power.request(time, this.collectedBottles);
+      if (result !== 'started') {
+        const counter = result === 'missing-bottle' ? this.bottleCounter : this.powerCounter;
+        this.tweens.killTweensOf(counter);
+        counter.setColor(result === 'missing-bottle' ? '#ff455d' : '#ffbf55');
+        this.tweens.add({ targets: counter, alpha: 0.25, duration: 100, yoyo: true, repeat: 3,
+          onComplete: () => { counter.setAlpha(1); if (counter === this.bottleCounter) this.updateBottleCounter(); else counter.setColor('#f3d475'); } });
+        return;
+      }
+      this.collectedBottles--;
+      this.updateBottleCounter();
+      this.fox.setVelocityX(0);
+      this.setCrouching(false);
+      this.throwUntil = 0;
+      this.foxArt.once('animationcomplete-drink', () => {
+        if (this.dying || this.ending || this.power.phase !== 'drinking') return;
+        this.power.phase = 'flashing';
+        let white = false;
+        this.time.addEvent({ delay: 100, repeat: 5, callback: () => {
+          if (this.ending || this.dying) return;
+          white = !white;
+          if (white) this.foxArt.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL); else this.foxArt.clearTint();
+        } });
+        this.time.delayedCall(700, () => {
+          if (this.dying || this.ending) return;
+          this.power.activate(this.time.now);
+          this.foxArt.clearTint().play('muscle-idle');
+          this.drawHearts();
+        });
+      });
+      this.foxArt.play('drink');
+    }
+
+    endPowerup() {
+      this.punchUntil = 0;
+      this.foxArt.clearTint().play('idle');
+      this.drawHearts();
+    }
+
+    punch(time) {
+      this.nextPunch = time + 500;
+      this.punchUntil = time + 430;
+      this.foxArt.play('muscle-punch', true);
+      this.time.delayedCall(160, () => {
+        if (this.ending || this.power.phase !== 'active') return;
+        const direction = this.fox.flipX ? -1 : 1;
+        const hitbox = this.add.zone(this.fox.x + direction * 48, this.fox.y - 42, 48, 42);
+        this.physics.add.existing(hitbox);
+        hitbox.body.setAllowGravity(false);
+        this.events.emit('player-punch', { hitbox, damage: 2, direction });
+        this.time.delayedCall(140, () => hitbox.destroy());
+      });
+    }
+
+    setCrouching(crouching) {
+      if (crouching === this.crouching) return;
+      const body = this.fox.body;
+      const previousHeight = body.height;
+      body.setSize(78, crouching ? 80 : 130, false).setOffset(57, crouching ? 85 : 35);
+      const resizeOffset = previousHeight - body.height;
+      body.position.y += resizeOffset;
+      body.prev.y += resizeOffset;
+      body.prevFrame.y += resizeOffset;
+      body.updateCenter();
+      this.crouching = crouching;
+    }
+
     takeDamage(amount = 1) {
-      if (!Number.isFinite(amount) || amount < 1 || this.health <= 0 || this.dying || this.time.now < this.invulnerableUntil) return false;
-      this.health = Math.max(0, this.health - Math.floor(amount));
+      if (!Number.isFinite(amount) || amount < 1 || this.health + this.power.bonusHealth <= 0 || this.dying || this.time.now < this.invulnerableUntil) return false;
+      this.health = Math.max(0, this.health - this.power.absorbDamage(Math.floor(amount)));
       this.invulnerableUntil = this.time.now + 800;
       this.drawHearts();
       this.tweens.add({ targets: this.foxArt, alpha: 0.35, duration: 80, yoyo: true, repeat: 4,
         onComplete: () => this.foxArt.setAlpha(1) });
-      this.events.emit('health-changed', this.health);
+      this.events.emit('health-changed', this.health + this.power.bonusHealth);
       if (this.health === 0) {
         this.playDeath();
         this.events.emit('player-defeated');
@@ -235,6 +371,9 @@ export function createGame(parent, { onComplete } = {}) {
       if (this.dying) return;
       this.dying = true;
       this.ending = true;
+      this.power.cancel();
+      this.drawHearts();
+      this.updatePowerHud(this.time.now);
       // Cancel any pending homecoming actions or damage flash so nothing
       // overrides the death animation or starts a competing ending.
       this.time.removeAllEvents();
@@ -251,8 +390,10 @@ export function createGame(parent, { onComplete } = {}) {
     finishAdventure() {
       if (this.ending) return;
       this.ending = true;
+      if (['drinking', 'flashing'].includes(this.power.phase)) this.power.cancel();
+      this.foxArt.clearTint().setAlpha(1);
       this.fox.setVelocity(0, 0).setFlipX(false);
-      this.foxArt.setAngle(0).play('idle', true);
+      this.foxArt.setAngle(0).play(this.power.phase === 'active' ? 'muscle-idle' : 'idle', true);
       this.bottles.clear(true, true);
       this.bellHover.stop();
       this.bell.play('bell-attack');
@@ -308,48 +449,59 @@ export function createGame(parent, { onComplete } = {}) {
     }
 
     update(time) {
+      if (this.power.expire(time)) this.endPowerup();
+      this.updatePowerHud(time);
       if (this.ending) return;
       if (Phaser.Input.Keyboard.JustDown(this.keys.R)) { this.scene.restart(); return; }
       if (this.health === 0) return;
-      if (this.fox.body.blocked.down && this.fox.x >= this.bell.x - 65) {
-        this.finishAdventure();
+      const grounded = this.fox.body.blocked.down;
+      if (grounded && this.fox.x >= this.bell.x - 65) { this.finishAdventure(); return; }
+      if (Phaser.Input.Keyboard.JustDown(this.keys.Q)) this.startPowerup(time);
+      if (['drinking', 'flashing'].includes(this.power.phase)) {
+        this.fox.setVelocityX(0);
+        this.wasJump = this.keys.W.isDown;
         return;
       }
-      const grounded = this.fox.body.blocked.down;
+      const powered = this.power.phase === 'active';
+      if (grounded && !this.wasGrounded) this.landingUntil = time + 90;
+      this.wasGrounded = grounded;
       const crouching = this.keys.S.isDown && grounded;
-      if (crouching !== this.crouching) {
-        const body = this.fox.body;
-        const previousHeight = body.height;
-        // Change only the collision rectangle; the physics sprite never scales.
-        body.setSize(78, crouching ? 80 : 130, false).setOffset(57, crouching ? 85 : 35);
-        const resizeOffset = previousHeight - body.height;
-        body.position.y += resizeOffset;
-        body.prev.y += resizeOffset;
-        body.prevFrame.y += resizeOffset;
-        body.updateCenter();
-        this.crouching = crouching;
-      }
+      const enteredCrouch = crouching && !this.crouching;
+      const leavingCrouch = !crouching && this.crouching;
+      this.setCrouching(crouching);
       const direction = Number(this.keys.D.isDown) - Number(this.keys.A.isDown);
       const run = this.keys.SHIFT.isDown;
       this.fox.setVelocityX(crouching ? 0 : direction * (run ? 310 : 185));
       if (direction && !crouching) this.fox.setFlipX(direction < 0);
       const jump = this.keys.W.isDown;
-      if (jump && !this.wasJump && grounded && !crouching) this.fox.setVelocityY(-480);
-      this.wasJump = jump;
-      if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE) && time >= this.nextThrow) this.throwBottle(time);
-      if (crouching) {
-        this.foxArt.anims.stop();
-        this.foxArt.setTexture('crouch');
-      } else if (time < this.throwUntil) {
-        this.foxArt.play('throw', true);
-      } else if (!grounded) {
-        this.foxArt.anims.stop();
-        this.foxArt.setTexture('jump', this.fox.body.velocity.y < 0 ? 1 : 2);
-      } else {
-        this.foxArt.play(crouching ? 'idle' : direction ? (run ? 'run' : 'walk') : 'idle', true);
+      if (jump && !this.wasJump && grounded && !crouching) {
+        this.fox.setVelocityY(-480);
+        this.jumpStartUntil = time + 90;
       }
-
+      this.wasJump = jump;
+      if (Phaser.Input.Keyboard.JustDown(this.keys.SPACE)) {
+        if (powered && time >= this.nextPunch) this.punch(time);
+        else if (!powered && time >= this.nextThrow) this.throwBottle(time);
+      }
+      if (powered && time < this.punchUntil) this.foxArt.play('muscle-punch', true);
+      else if (crouching) {
+        if (powered) {
+          if (enteredCrouch) this.foxArt.play('muscle-crouch');
+          else if (!this.foxArt.anims.isPlaying) this.foxArt.setTexture('muscle-crouch', 2);
+        } else { this.foxArt.anims.stop(); this.foxArt.setTexture('crouch'); }
+      } else if (!powered && time < this.throwUntil) this.foxArt.play('throw', true);
+      else if (!grounded) {
+        this.foxArt.anims.stop();
+        this.foxArt.setTexture(powered ? 'muscle-jump' : 'jump', powered && time < this.jumpStartUntil ? 0 : this.fox.body.velocity.y < 0 ? 1 : 2);
+      } else if (powered && time < this.landingUntil) {
+        this.foxArt.anims.stop();
+        this.foxArt.setTexture('muscle-jump', 3);
+      } else {
+        if (powered && leavingCrouch) this.foxArt.setTexture('muscle-crouch', 3);
+        this.foxArt.play(`${powered ? 'muscle-' : ''}${direction ? (run ? 'run' : 'walk') : 'idle'}`, true);
+      }
     }
+
   }
   return new Phaser.Game({type:Phaser.AUTO,parent,width:960,height:540,pixelArt:true,backgroundColor:'#000000',scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},physics:{default:'arcade',arcade:{gravity:{y:1100}}},scene:[Intro, Street]});
 }

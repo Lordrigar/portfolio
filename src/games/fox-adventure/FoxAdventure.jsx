@@ -55,7 +55,8 @@ export default function FoxAdventure() {
       <li><span><kbd>A</kbd><kbd>D</kbd></span> Move</li>
       <li><kbd>W</kbd> Jump</li>
       <li><kbd>S</kbd> Crouch</li>
-      <li><kbd>Space</kbd> Throw bottle</li>
+      <li><kbd>Space</kbd> Throw / Punch</li>
+      <li><kbd>Q</kbd> Power-up · 1 bottle</li>
       <li><kbd>Shift</kbd> Run</li>
       <li><kbd>R</kbd> Restart</li>
     </ul>
