@@ -1,0 +1,14 @@
+{
+  "death": {
+    "file": "death.png",
+    "frames": 7,
+    "frameWidth": 192,
+    "frameHeight": 176,
+    "frameRate": 7,
+    "repeat": 0,
+    "origin": {
+      "x": 0.5,
+      "y": 0.9375
+    }
+  }
+}

@@ -38,6 +38,7 @@ export function createGame(parent, { onComplete } = {}) {
   class Street extends Phaser.Scene {
     constructor() { super('Street'); }
     preload() {
+      this.load.spritesheet('death', '/games/fox-adventure/sprites/death/death.png', { frameWidth: 192, frameHeight: 176 });
       this.load.spritesheet('bell-idle', '/games/fox-adventure/sprites/bell/idle.png', { frameWidth: 320, frameHeight: 288 });
       this.load.spritesheet('bell-attack', '/games/fox-adventure/sprites/bell/attack.png', { frameWidth: 320, frameHeight: 288 });
       this.load.image('street', '/games/fox-adventure/maps/street.png');
@@ -63,7 +64,11 @@ export function createGame(parent, { onComplete } = {}) {
         texture.refresh();
       }
       this.ending = false;
+      this.dying = false;
+      this.fading = false;
       this.collectedBottles = 0;
+      this.health = 3;
+      this.invulnerableUntil = 0;
       this.wasJump = false;
       this.throwUntil = 0;
       this.nextThrow = 0;
@@ -115,6 +120,9 @@ export function createGame(parent, { onComplete } = {}) {
       this.bell = this.add.sprite(this.levelWidth - 125, pavementY - 25, 'bell-idle')
         .setOrigin(0.5, 0.85).setScale(0.4).setDepth(3).play('bell-idle');
       this.bellHover = this.tweens.add({ targets: this.bell, y: this.bell.y - 6, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+      if (!this.anims.exists('death')) this.anims.create({
+        key: 'death', frames: this.anims.generateFrameNumbers('death', { start: 0, end: 6 }), frameRate: 7, repeat: 0,
+      });
       this.bottles = this.physics.add.group();
       this.physics.add.collider(this.bottles, platforms, (bottle) => this.breakBottle(bottle), (bottle, platform) => {
         if (platform === pavement) return true;
@@ -148,13 +156,18 @@ export function createGame(parent, { onComplete } = {}) {
         const pickup = this.pickups.create(x, y, 'projectile', 'pickup').setScale(0.7);
         this.tweens.add({ targets: pickup, y: y - 8, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
       }
-      this.add.rectangle(24, 22, 166, 48, 0x10121c, 0.9).setOrigin(0).setStrokeStyle(1, 0x766c70).setScrollFactor(0).setDepth(10);
-      this.add.image(49, 46, 'projectile', 'pickup').setScale(0.45).setScrollFactor(0).setDepth(11);
-      this.bottleCounter = this.add.text(72, 46, '0 / 3', {
+      this.add.rectangle(770, 22, 166, 48, 0x10121c, 0.9).setOrigin(0).setStrokeStyle(1, 0x766c70).setScrollFactor(0).setDepth(10);
+      this.add.image(795, 46, 'projectile', 'pickup').setScale(0.45).setScrollFactor(0).setDepth(11);
+      this.bottleCounter = this.add.text(818, 46, '0 / 3', {
         fontFamily: 'monospace', fontSize: '22px', fontStyle: 'bold', color: '#f3e9d3',
       }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(11);
+      this.add.rectangle(770, 78, 166, 44, 0x10121c, 0.9).setOrigin(0).setStrokeStyle(1, 0x766c70).setScrollFactor(0).setDepth(10);
+      this.hearts = this.add.graphics().setScrollFactor(0).setDepth(11);
+      this.drawHearts();
+      this.events.on('player-hit', this.takeDamage, this);
+      this.events.once('shutdown', () => this.events.off('player-hit', this.takeDamage, this));
       this.physics.add.overlap(this.fox, this.pickups, (_fox, pickup) => {
-        if (!pickup.active) return;
+        if (!pickup.active || this.dying) return;
         this.tweens.killTweensOf(pickup);
         pickup.disableBody(true, true);
         this.collectedBottles += 1;
@@ -179,6 +192,62 @@ export function createGame(parent, { onComplete } = {}) {
     }
 
 
+    drawHearts() {
+      const pixels = ['0110110', '1111111', '1111111', '0111110', '0011100', '0001000'];
+      this.hearts.clear();
+      for (let heart = 0; heart < 3; heart++) {
+        const x = 799 + heart * 40;
+        const filled = heart < this.health;
+        pixels.forEach((row, y) => {
+          [...row].forEach((pixel, column) => {
+            if (pixel !== '1') return;
+            this.hearts.fillStyle(0x090d14).fillRect(x + column * 4 + 1, 90 + y * 4, 4, 4);
+            this.hearts.fillStyle(filled ? 0xf06477 : 0x483945).fillRect(x + column * 4, 88 + y * 4, 4, 4);
+          });
+        });
+        if (filled) this.hearts.fillStyle(0xffc5c5).fillRect(x + 4, 92, 8, 4);
+      }
+    }
+
+    takeDamage(amount = 1) {
+      if (!Number.isFinite(amount) || amount < 1 || this.health <= 0 || this.dying || this.time.now < this.invulnerableUntil) return false;
+      this.health = Math.max(0, this.health - Math.floor(amount));
+      this.invulnerableUntil = this.time.now + 800;
+      this.drawHearts();
+      this.tweens.add({ targets: this.foxArt, alpha: 0.35, duration: 80, yoyo: true, repeat: 4,
+        onComplete: () => this.foxArt.setAlpha(1) });
+      this.events.emit('health-changed', this.health);
+      if (this.health === 0) {
+        this.playDeath();
+        this.events.emit('player-defeated');
+      }
+      return true;
+    }
+
+    fadeToRestart() {
+      if (this.fading) return;
+      this.fading = true;
+      this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => onComplete?.());
+      this.cameras.main.fadeOut(2200, 0, 0, 0);
+    }
+
+    playDeath() {
+      if (this.dying) return;
+      this.dying = true;
+      this.ending = true;
+      // Cancel any pending homecoming actions or damage flash so nothing
+      // overrides the death animation or starts a competing ending.
+      this.time.removeAllEvents();
+      this.tweens.killTweensOf(this.foxArt);
+      this.fox.setVelocity(0, 0);
+      this.bottles.clear(true, true);
+      this.foxArt.clearTint().setAlpha(1).setAngle(0);
+      this.foxArt.once('animationcomplete-death', () => {
+        this.time.delayedCall(650, () => this.fadeToRestart());
+      });
+      this.foxArt.play('death');
+    }
+
     finishAdventure() {
       if (this.ending) return;
       this.ending = true;
@@ -188,7 +257,9 @@ export function createGame(parent, { onComplete } = {}) {
       this.bellHover.stop();
       this.bell.play('bell-attack');
       this.time.delayedCall(350, () => {
-        // Time the recoil to the broom's downward swing.
+        // Time the recoil and lost heart to the broom's downward swing.
+        this.takeDamage();
+        if (this.dying) return;
         this.fox.setVelocityX(-65);
         this.foxArt.setTint(0xffb7a5);
         this.tweens.add({ targets: this.foxArt, angle: -14, duration: 100, yoyo: true });
@@ -210,8 +281,7 @@ export function createGame(parent, { onComplete } = {}) {
           fontFamily: 'monospace', fontSize: '18px', color: '#352830', wordWrap: { width: 240 },
         }).setDepth(21);
         this.time.delayedCall(2600, () => {
-          this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => onComplete?.());
-          this.cameras.main.fadeOut(2200, 0, 0, 0);
+          this.fadeToRestart();
         });
       });
     }
@@ -239,11 +309,12 @@ export function createGame(parent, { onComplete } = {}) {
 
     update(time) {
       if (this.ending) return;
+      if (Phaser.Input.Keyboard.JustDown(this.keys.R)) { this.scene.restart(); return; }
+      if (this.health === 0) return;
       if (this.fox.body.blocked.down && this.fox.x >= this.bell.x - 65) {
         this.finishAdventure();
         return;
       }
-      if (Phaser.Input.Keyboard.JustDown(this.keys.R)) { this.scene.restart(); return; }
       const grounded = this.fox.body.blocked.down;
       const crouching = this.keys.S.isDown && grounded;
       if (crouching !== this.crouching) {

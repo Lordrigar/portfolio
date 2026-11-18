@@ -1,0 +1,14 @@
+{
+  "drink": {
+    "file": "drink.png",
+    "frames": 8,
+    "frameWidth": 320,
+    "frameHeight": 320,
+    "frameRate": 8,
+    "repeat": 0,
+    "origin": {
+      "x": 0.5,
+      "y": 0.94375
+    }
+  }
+}
