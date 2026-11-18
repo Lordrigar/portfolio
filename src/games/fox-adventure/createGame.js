@@ -565,7 +565,7 @@ export function createGame(parent, { onComplete } = {}) {
         .setScale(0.85).setFlipX(true).setDepth(3).play('solo-idle');
       this.dialogue = [
         { speaker: 'bell', text: 'Znowu jesteś pijany' },
-        { speaker: 'fox', text: 'Kurwa przepraszam no...wiem, że zjebałem. Biorę to na klate' },
+        { speaker: 'fox', text: 'Kurwa przepraszam no...wiem, że zjebałem. Biorę to na klatę' },
         { speaker: 'bell', text: 'Weź to na klatę nierobie jeden....SOLO! Bierz go!' },
       ];
       this.time.delayedCall(900, () => this.showDialogue(0));
