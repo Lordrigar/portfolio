@@ -2,16 +2,13 @@ import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import SynthwaveLanding, { SynthwaveScene } from './SynthwaveLanding.jsx';
 
-const MagicWords = lazy(() => import('./games/magic-words/MagicWords.jsx'));
 const FoxAdventure = lazy(() => import('./games/fox-adventure/FoxAdventure.jsx'));
 
 function PageTitle() {
   const { pathname } = useLocation();
   useEffect(() => {
-    document.documentElement.lang = pathname.startsWith('/games/magic-words') ? 'cs' : 'en';
     document.title = pathname.startsWith('/games/fox-adventure')
       ? "Fox’s Adventure | Portfolio"
-      : pathname.startsWith('/games/magic-words') ? 'Kouzelná slovíčka | Portfolio'
       : pathname.startsWith('/games') ? 'Games | Portfolio' : 'Portfolio | Welcome to my humble collection';
   }, [pathname]);
   return null;
@@ -54,14 +51,6 @@ function Games() {
           <span className="synth-game-play">Play <span aria-hidden="true">→</span></span>
         </div>
       </Link>
-      <Link className="synth-game-card" to="/games/magic-words/">
-        <div className="synth-game-art synth-word-art" aria-hidden="true"><span>Á<span>✦</span></span></div>
-        <div className="synth-game-copy">
-          <h2>Kouzelná slovíčka</h2>
-          <p>A little Czech word adventure. Listen, discover letters, and write them on paper.</p>
-          <span className="synth-game-play">Play</span>
-        </div>
-      </Link>
     </div>
     <footer className="synth-footer"><span aria-hidden="true">✦</span> Made for the fun of it.</footer>
   </main>;
@@ -72,7 +61,6 @@ export default function App() {
     <Routes>
       <Route path="/" element={<SynthwaveLanding />} />
       <Route path="/games/" element={<Games />} />
-      <Route path="/games/magic-words/" element={<MagicWords />} />
       <Route path="/games/fox-adventure/" element={<FoxAdventure />} />
       <Route path="*" element={<main><h1>Page not found</h1><Link to="/">Back to portfolio</Link></main>} />
     </Routes>

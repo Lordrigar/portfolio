@@ -20,7 +20,7 @@ app.get('/health', (_req, res) => {
 app.use(express.static(dist));
 
 // Explicit app routes support direct links without masking missing assets.
-app.get(['/', '/games', '/games/', '/games/fox-adventure', '/games/fox-adventure/', '/games/magic-words', '/games/magic-words/'], (_req, res) => {
+app.get(['/', '/games', '/games/', '/games/fox-adventure', '/games/fox-adventure/'], (_req, res) => {
   res.sendFile(path.join(dist, 'index.html'));
 });
 app.use((_req, res) => {

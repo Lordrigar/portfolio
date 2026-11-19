@@ -167,10 +167,6 @@
   .synth-player-panel p.cursor-hint { font-size: .7rem; }
 }
 
-.synth-library { flex-direction: column; justify-content: center; gap: 32px; }
-.synth-word-art { background: radial-gradient(ellipse at center, #633585, #1c0b30 75%); }
-.synth-word-art > span { position: relative; color: #f7dcff; font: italic 900 150px 'Arial Black', sans-serif; text-shadow: 0 3px 0 #9851ba, 0 0 40px #f781e466; }
-.synth-word-art > span > span { position: absolute; top: 20px; right: -40px; color: #f4b7db; font-size: 55px; }
 
 .synth-loading .synth-scene { opacity: .65; }
 .synth-loading-content { flex: 1; display: grid; place-items: center; padding: 40px 24px 16vh; }
